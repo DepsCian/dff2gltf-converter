@@ -15,7 +15,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "s": "tsc && node main.js"
+    "start": "tsc && node index.js"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.1.3",
