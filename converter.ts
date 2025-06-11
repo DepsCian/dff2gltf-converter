@@ -42,7 +42,7 @@ export default async function convertDffToGlb(dff: Buffer, txd: Buffer): Promise
   const document = new Document();
   const buffer = document.createBuffer();
   const texture = document.createTexture().setImage(pngBuffer);
-  texture.setMimeType("image/jpg");
+  texture.setMimeType("image/png");
   texture.setName(rwTexture.textureName);
 
   const material = document
