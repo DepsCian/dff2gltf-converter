@@ -1,8 +1,9 @@
-import fs from 'fs';
 import { Document, Scene, Node, Mesh, Primitive, Material, Texture, ImageUtils, NodeIO } from '@gltf-transform/core';
-import { DffParser, TxdParser } from 'rw-parser';
+import { DffParser, RwTxd, TxdParser } from 'rw-parser';
+import { PNG } from 'pngjs';
 
-export function convertDffToGlb(dff: Buffer): Document {
+export default async function convertDffToGlb(dff: Buffer, txd: Buffer): Promise<Document> {
+
   const rwDff = new DffParser(dff).parse();
   const geometry = rwDff.geometryList.geometries[0];
   const { vertexInformation: verticesArray, binMesh, textureMappingInformation: textureInfo, normalInformation: normalsArray } = geometry;
@@ -29,12 +30,20 @@ export function convertDffToGlb(dff: Buffer): Document {
     normals[i * 3 + 2] = normal.z;
   });
 
-  const imagebuffer = fs.readFileSync("./assets/texture.PNG");
+
+  const rwTxd :RwTxd = new TxdParser(txd).parse();
+  const rwTexture = rwTxd.textureDictionary.textureNatives[0];
+
+  const imageBuffer :Buffer = Buffer.from(rwTexture.mipmaps[0]);
+  const width = rwTexture.width;
+  const height = rwTexture.height;
+  const pngBuffer = await createPNGBufferFromRGBA(imageBuffer, width, height);
 
   const document = new Document();
   const buffer = document.createBuffer();
-  const texture = document.createTexture().setImage(imagebuffer);
-  texture.setMimeType("image/png");
+  const texture = document.createTexture().setImage(pngBuffer);
+  texture.setMimeType("image/jpg");
+  texture.setName(rwTexture.textureName);
 
   const material = document
     .createMaterial("cube-material")
@@ -60,9 +69,30 @@ export function convertDffToGlb(dff: Buffer): Document {
       "NORMAL",
       document.createAccessor().setType("VEC3").setArray(normals)
     );
+    
   const mesh = document.createMesh().addPrimitive(primitive);
   const node = document.createNode().setMesh(mesh);
   const scene = document.createScene().addChild(node);
 
   return document;
+}
+
+async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const png = new PNG( { width, height, filterType: 4, colorType: 6 } );
+    png.data = rgbaBuffer;
+
+    const chunks: Buffer[] = [];
+    png.pack()
+      .on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      })
+      .on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        resolve(buffer);
+      })
+      .on('error', (err: Error) => {
+        reject(err);
+      });
+  });
 }
