@@ -1,92 +1,96 @@
-import { Document, Mesh, Primitive, Material, Accessor } from '@gltf-transform/core';
-import { DffParser, RwTextureCoordinate, RwTextureNative, RwTxd, TxdParser } from 'rw-parser';
+import { Document, Primitive, PropertyType } from '@gltf-transform/core';
+import { DffParser, RwTextureCoordinate, RwTxd, TxdParser } from 'rw-parser';
 import { PNG } from 'pngjs';
+import { normals as normalize, dedup } from '@gltf-transform/functions';
+
 
 export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
+
   const doc = new Document();
   const buffer = doc.createBuffer();
-  const rwDff = new DffParser(dff).parse();
 
-  const rwGeometry = rwDff.geometryList.geometries[0]; // 1 geometry
-  const {
-    vertexInformation: rwVerticesArray,
-    binMesh: rwBinMesh,
-    textureMappingInformation: rwTextureInfo,
-    normalInformation: rwNormalsArray,
-  } = rwGeometry;
-  const rwUvsArray: RwTextureCoordinate[] = rwTextureInfo && rwTextureInfo.length > 0 ? rwTextureInfo[0] : undefined; // 1 geometry
-
-  const vertices = new Float32Array(rwVerticesArray.length * 3);
-  rwVerticesArray.forEach((vertex, i) => {
-    vertices[i * 3] = vertex.x;
-    vertices[i * 3 + 1] = vertex.y;
-    vertices[i * 3 + 2] = vertex.z;
-  });
-
-  console.log(`RW VERTICES ARRAY LENGTH: ${rwVerticesArray.length}. Total Vertices array length: ${vertices.length}`);
-
-  const uvs = new Float32Array(rwUvsArray.length * 2);
-  rwUvsArray.forEach((uv, i) => {
-    uvs[i * 2] = uv.u;
-    uvs[i * 2 + 1] = uv.v;
-  });
-
-  const normals = new Float32Array(rwNormalsArray.length * 3);
-  rwNormalsArray.forEach((normal, i) => {
-    normals[i * 3] = normal.x;
-    normals[i * 3 + 1] = normal.y;
-    normals[i * 3 + 2] = normal.z;
-  });
-
+   /// TEXTURES
   const rwTxd: RwTxd = new TxdParser(txd).parse();
-  const rwTextures: RwTextureNative[] = rwTxd.textureDictionary.textureNatives;
-  let material: Material = undefined;
-  const mesh: Mesh = doc.createMesh();
-  const verticesAccessor: Accessor = doc
-    .createAccessor()
-    .setType("VEC3")
-    .setArray(vertices);
+  const texturesMap: Map<String, Buffer> = new Map();
 
-  for (let i = 0; i < rwTextures.length; i++) {
-    const rwTexture = rwTextures[i];
-    const imageBuffer: Buffer = Buffer.from(rwTexture.mipmaps[0]);
-    const width = rwTexture.width;
-    const height = rwTexture.height;
-    const pngBuffer = await createPNGBufferFromRGBA(imageBuffer, width, height);
-
-    const texture = doc.createTexture().setImage(pngBuffer);
-    texture.setMimeType("image/png");
-    texture.setName(rwTexture.textureName);
-    console.log(`Texture name: ${rwTexture.textureName}`);
-
-    material = doc
-      .createMaterial(`${rwTextures[i].textureName}Mtl`)
-      .setBaseColorTexture(texture)
-      .setBaseColorFactor([1, 1, 1, 1])
-      .setMetallicFactor(0)
-      .setRoughnessFactor(1);
-
-    const indices = new Uint32Array(rwBinMesh?.meshes[i]?.indices);
-
-    const primitive = doc
-      .createPrimitive()
-      .setMode(Primitive.Mode.TRIANGLES)
-      .setAttribute("POSITION", verticesAccessor)
-      .setMaterial(material)
-      .setAttribute(
-        "TEXCOORD_0",
-        doc.createAccessor().setType("VEC2").setArray(uvs)
-      )
-      .setIndices(doc.createAccessor().setType("SCALAR").setArray(indices))
-      .setAttribute(
-        "NORMAL",
-        doc.createAccessor().setType("VEC3").setArray(normals)
-      );
-    mesh.addPrimitive(primitive);
+  for (const textureNative of rwTxd.textureDictionary.textureNatives) {
+    const pngBuffer = await createPNGBufferFromRGBA(Buffer.from(textureNative.mipmaps[0]), textureNative.width, textureNative.height);
+    texturesMap.set(textureNative.textureName, pngBuffer);
   }
 
-  const node = doc.createNode().setMesh(mesh);
-  const scene = doc.createScene().addChild(node);
+
+  // GEOMETRIES
+  const rwDff = new DffParser(dff).parse();
+
+  for (const rwGeometry of rwDff.geometryList.geometries) {
+    const mesh = doc.createMesh();
+    const {
+      vertexInformation: rwVerticesArray,
+      textureMappingInformation: rwTextureInfo,
+      normalInformation: rwNormalsArray,
+      binMesh: rwBinMesh,
+    } = rwGeometry;
+    const rwUvsArray: RwTextureCoordinate[] = rwTextureInfo && rwTextureInfo.length > 0 ? rwTextureInfo[0] : undefined;
+  
+    const vertices = new Float32Array(rwVerticesArray.length * 3);
+    rwVerticesArray.forEach((vertex, i) => {
+      vertices[i * 3] = vertex.x;
+      vertices[i * 3 + 1] = vertex.y;
+      vertices[i * 3 + 2] = vertex.z;
+    });
+  
+    const uvs = new Float32Array(rwUvsArray.length * 2);
+    rwUvsArray.forEach((uv, i) => {
+      uvs[i * 2] = uv.u;
+      uvs[i * 2 + 1] = uv.v;
+    });
+  
+    const normals = new Float32Array(rwNormalsArray.length * 3);
+    rwNormalsArray.forEach((normal, i) => {
+      normals[i * 3] = normal.x;
+      normals[i * 3 + 1] = normal.y;
+      normals[i * 3 + 2] = normal.z;
+    });
+
+    const positionsAccessor = doc.createAccessor().setType("VEC3").setArray(vertices);
+    const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
+
+    for (const rwPrimitive of rwBinMesh!.meshes) {
+      const indices = new Uint32Array(rwPrimitive.indices);
+      const materialIndex = rwPrimitive.materialIndex;
+      const textureName =   rwDff.geometryList.geometries[0].materialList.materialData[materialIndex].texture!.textureName;
+      const pngBuffer :Buffer = texturesMap.get(textureName);
+
+      const texture = doc.createTexture()
+        .setImage(pngBuffer)
+        .setMimeType("image/png")
+        .setName(textureName);
+
+      const primitive = doc.createPrimitive() 
+        .setMode(Primitive.Mode.TRIANGLES)
+        .setAttribute("POSITION", positionsAccessor)
+            .setMaterial(doc.createMaterial(`${textureName}Mtl`)
+              .setBaseColorTexture(texture)
+              .setBaseColorFactor([1, 1, 1, 1])
+              .setMetallicFactor(0)
+              .setRoughnessFactor(1))
+        .setAttribute("TEXCOORD_0", doc.createAccessor()
+            .setType("VEC2")
+            .setArray(uvs))
+        .setIndices(doc.createAccessor()
+            .setType("SCALAR")
+            .setArray(indices))
+        .setAttribute("NORMAL", normalsAccessor);
+        
+    mesh.addPrimitive(primitive);
+
+    }
+    const node = doc.createNode().setMesh(mesh);
+    const scene = doc.createScene().addChild(node);
+  }
+
+  await doc.transform(normalize());
+  await doc.transform(dedup({propertyTypes: [PropertyType.MESH, PropertyType.ACCESSOR]}));
 
   return doc;
 }
