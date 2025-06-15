@@ -9,6 +9,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 
   const doc = new Document();
   const buffer = doc.createBuffer();
+  const scene = doc.createScene();
   const texturesMap: Map<String, Buffer> = new Map();
 
    /// TEXTURES
@@ -70,6 +71,8 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
       }
   
       const positionsAccessor = doc.createAccessor().setType("VEC3").setArray(vertices);
+      const uvsAccessor = doc.createAccessor().setType("VEC2").setArray(uvs);
+
   
       for (const rwPrimitive of rwBinMesh.meshes) {
         const indices = new Uint32Array(rwPrimitive.indices);
@@ -108,19 +111,16 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           .setMode(Primitive.Mode.TRIANGLES)
           .setAttribute("POSITION", positionsAccessor)
               .setMaterial(material)
-          .setAttribute("TEXCOORD_0", doc.createAccessor()
-              .setType("VEC2")
-              .setArray(uvs))
+          .setAttribute("TEXCOORD_0", uvsAccessor)
           .setIndices(doc.createAccessor()
               .setType("SCALAR")
               .setArray(indices))
           .setAttribute("NORMAL", normalsAccessor);
           
       mesh.addPrimitive(primitive);
-  
       }
-      const node = doc.createNode().setMesh(mesh);
-      const scene = doc.createScene().addChild(node);
+      
+      scene.addChild( doc.createNode().setMesh(mesh) );
     }
   } catch(e) {
     console.error(`${e} Cannot create geometry mesh.`)
@@ -129,7 +129,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 
 
   // POST-PROCESSING
-  await doc.transform(normalize());
+  await doc.transform(normalize({ overwrite: false }));
   await doc.transform(dedup({propertyTypes: [PropertyType.MESH, PropertyType.ACCESSOR, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
 
   
