@@ -35,7 +35,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   
     for (const rwGeometry of rwDff.geometryList.geometries) {
       const mesh = doc.createMesh();
-  
+
       const rwTextureInfo = rwGeometry.textureMappingInformation;
       const rwUvsArray :RwTextureCoordinate[] = rwTextureInfo && rwTextureInfo.length > 0 ? rwTextureInfo[0] : undefined;
       const rwVerticesArray :RwVector3[] = rwGeometry.hasVertices && rwGeometry.vertexInformation.length > 0 ? rwGeometry.vertexInformation : undefined;
@@ -81,10 +81,10 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
       }
 
       const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
+      const primitiveMode = rwGeometry.vertexInformation.length < rwGeometry.triangleInformation.length ? Primitive.Mode.TRIANGLES : Primitive.Mode.TRIANGLE_STRIP;
 
       for (const rwPrimitive of rwBinMesh.meshes) {
         const indices = new Uint32Array(rwPrimitive.indices);
-
         const materialIndex = rwPrimitive.materialIndex;
         const rwMaterial = rwGeometry.materialList.materialData[materialIndex];
 
@@ -110,7 +110,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         }
   
         let primitive = doc.createPrimitive() 
-          .setMode(Primitive.Mode.TRIANGLES)
+          .setMode(primitiveMode)
           .setAttribute("POSITION", positionsAccessor)
           .setMaterial(material)
           .setAttribute("TEXCOORD_0", uvsAccessor)
