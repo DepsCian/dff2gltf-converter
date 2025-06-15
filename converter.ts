@@ -78,21 +78,19 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         .setMetallicFactor(0)
         .setRoughnessFactor(1);
 
-        let texture = undefined;
-
         if (rwMaterial.isTextured) {
           const textureName = rwMaterial.texture.textureName;
           const pngBuffer :Buffer = texturesMap.get(textureName);
-    
-          texture = doc.createTexture()
+          if (pngBuffer != undefined) {
+            const texture = doc.createTexture()
             .setImage(pngBuffer)
             .setMimeType("image/png")
             .setName(textureName);
 
           material.setBaseColorTexture(texture);
-
-        } else {
-
+          } else {
+            console.error(`Texture ${textureName} not found in .txd`);
+          }
 
         }
   
