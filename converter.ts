@@ -1,7 +1,7 @@
 import { Document, Primitive, PropertyType } from '@gltf-transform/core';
-import { DffParser, RwBinMesh, RwMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
+import { DffParser, RwBinMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { PNG } from 'pngjs';
-import { normals as normalize, dedup } from '@gltf-transform/functions';
+import { dedup } from '@gltf-transform/functions';
 import { vec3 } from 'gl-matrix';
 
 
@@ -107,19 +107,18 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 
         }
   
-        const primitive = doc.createPrimitive() 
+        let primitive = doc.createPrimitive() 
           .setMode(Primitive.Mode.TRIANGLES)
           .setAttribute("POSITION", positionsAccessor)
-              .setMaterial(material)
+          .setMaterial(material)
           .setAttribute("TEXCOORD_0", uvsAccessor)
           .setIndices(doc.createAccessor()
-              .setType("SCALAR")
-              .setArray(indices))
+            .setType("SCALAR")
+            .setArray(indices))
           .setAttribute("NORMAL", normalsAccessor);
           
       mesh.addPrimitive(primitive);
       }
-      
       scene.addChild( doc.createNode().setMesh(mesh) );
     }
   } catch(e) {
@@ -129,9 +128,9 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 
 
   // POST-PROCESSING
-  await doc.transform(normalize({ overwrite: false }));
-  await doc.transform(dedup({propertyTypes: [PropertyType.MESH, PropertyType.ACCESSOR, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
-
+ 
+  await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
+  //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
 }
@@ -163,7 +162,6 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
   const vertexCount = positions.length / 3;
   const normals = new Float32Array(positions.length);
   const vertexToTriangles: Map<number, number[][]> = new Map();
-
   for (let i = 0; i < indices.length; i += 3) {
     const triangleIndices = [
       indices[i],
@@ -171,17 +169,15 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
       indices[i + 2],
     ];
 
-    for (const index of triangleIndices) {
-      if (index >= vertexCount) {
-        throw new Error(`Index out of bounds: ${index} >= ${vertexCount}`);
-      }
+    if (triangleIndices[0] === triangleIndices[1] || triangleIndices[1] === triangleIndices[2] || triangleIndices[0] === triangleIndices[2]) {
+      continue;
     }
 
-    for (const idx of triangleIndices) {
-      if (!vertexToTriangles.has(idx)) {
-        vertexToTriangles.set(idx, []);
+    for (const index of triangleIndices) {
+      if (!vertexToTriangles.has(index)) {
+        vertexToTriangles.set(index, []);
       }
-      vertexToTriangles.get(idx)?.push([...triangleIndices]);
+      vertexToTriangles.get(index)?.push([...triangleIndices]);
     }
   }
 
@@ -189,21 +185,21 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
     const triangles = vertexToTriangles.get(vertexIndex) || [];
     const normal = vec3.create();
 
-    for (const triIndices of triangles) {
+    for (const triangleIndices of triangles) {
       const v0 = vec3.fromValues(
-        positions[triIndices[0] * 3],
-        positions[triIndices[0] * 3 + 1],
-        positions[triIndices[0] * 3 + 2]
+        positions[triangleIndices[0] * 3],
+        positions[triangleIndices[0] * 3 + 1],
+        positions[triangleIndices[0] * 3 + 2]
       );
       const v1 = vec3.fromValues(
-        positions[triIndices[1] * 3],
-        positions[triIndices[1] * 3 + 1],
-        positions[triIndices[1] * 3 + 2]
+        positions[triangleIndices[1] * 3],
+        positions[triangleIndices[1] * 3 + 1],
+        positions[triangleIndices[1] * 3 + 2]
       );
       const v2 = vec3.fromValues(
-        positions[triIndices[2] * 3],
-        positions[triIndices[2] * 3 + 1],
-        positions[triIndices[2] * 3 + 2]
+        positions[triangleIndices[2] * 3],
+        positions[triangleIndices[2] * 3 + 1],
+        positions[triangleIndices[2] * 3 + 2]
       );
 
       const edge1 = vec3.create();
@@ -213,8 +209,17 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
       vec3.subtract(edge1, v1, v0);
       vec3.subtract(edge2, v2, v0);
       vec3.cross(triangleNormal, edge1, edge2);
+
+      if (vec3.sqrLen(triangleNormal) === 0) {
+        continue;
+      }
+
       vec3.normalize(triangleNormal, triangleNormal);
       vec3.add(normal, normal, triangleNormal);
+    }
+
+    if (vec3.sqrLen(normal) === 0) {
+      normal[1] = 1;
     }
 
     vec3.normalize(normal, normal);
