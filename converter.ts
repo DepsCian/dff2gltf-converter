@@ -72,16 +72,18 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   
       const positionsAccessor = doc.createAccessor().setType("VEC3").setArray(vertices);
       const uvsAccessor = doc.createAccessor().setType("VEC2").setArray(uvs);
+      const sharedIndicesArray :number[] = [];
+      rwGeometry.binMesh.meshes.forEach((mesh) => { sharedIndicesArray.push(...mesh.indices) });
+      const indices :Uint32Array = new Uint32Array(sharedIndicesArray);
 
-  
+      if (normals == undefined || rwBinMesh.meshCount > 1) {
+        normals = await computeNormals(vertices, indices);
+      }
+
+      const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
+
       for (const rwPrimitive of rwBinMesh.meshes) {
         const indices = new Uint32Array(rwPrimitive.indices);
-
-        if (normals == undefined || rwBinMesh.meshCount > 1) {
-          normals = await computeNormals(vertices, indices);
-        }
-
-        const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
 
         const materialIndex = rwPrimitive.materialIndex;
         const rwMaterial = rwGeometry.materialList.materialData[materialIndex];
