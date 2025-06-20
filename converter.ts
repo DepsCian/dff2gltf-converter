@@ -1,9 +1,8 @@
-import { Document, Primitive, PropertyType } from '@gltf-transform/core';
-import { DffParser, RwBinMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
+import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
+import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
-import { vec3 } from 'gl-matrix';
-
+import { quat, vec3 } from 'gl-matrix';
 
 export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
 
@@ -123,22 +122,54 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
       }
       scene.addChild( doc.createNode().setMesh(mesh) );
     }
+    
+    // CREATING SKIN SECTION
+    try {
+      const rwFrames = rwDff.frameList.frames;
+      const skin = doc.createSkin('Normal');
+      let bones :Node[] = [];
+  
+      for (let i = 0; i < rwFrames.length; i++) {
+        const frame = rwFrames[i];
+        const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
+        const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
+  
+        if (frame.parentFrame == -1) { 
+          bones.push(undefined);
+          continue;
+        }
+  
+        const bone = doc.createNode(rwDff.dummies[i-1])
+              .setTranslation(translationVector)
+              .setRotation([rotationQuat[0], rotationQuat[1], rotationQuat[2], rotationQuat[3]])
+              .setScale([1, 1, 1]);
+  
+        if (frame.parentFrame == 0) { 
+          skin.addJoint(bone);
+          bones.push(bone)
+          continue;
+        }
+  
+        skin.addJoint(bone);
+        bones.push(bone);
+        bones[frame.parentFrame].addChild(bone);
+      }
+    } catch(e) {
+      console.error(`${e} Cannot create skin data.`);
+      return null;
+    }
+
   } catch(e) {
     console.error(`${e} Cannot create geometry mesh.`)
     return null;
   }
 
-
   // POST-PROCESSING
- 
   await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
   //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
 }
-
-
-
 
 async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -158,6 +189,12 @@ async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height
         reject(err);
       });
   });
+}
+
+async function quatFromRwMatrix (rwMatrix :RwMatrix3) :Promise<quat> {
+  return quat.fromMat3(quat.create(), [rwMatrix.right.x, rwMatrix.right.y, rwMatrix.right.z,
+    rwMatrix.up.x, rwMatrix.up.y, rwMatrix.up.z, 
+    rwMatrix.at.x, rwMatrix.at.y, rwMatrix.at.z]); 
 }
 
 async function computeNormals(positions :Float32Array, indices :Uint32Array) :Promise<Float32Array> {
