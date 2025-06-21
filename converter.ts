@@ -2,13 +2,14 @@ import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
 import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
-import { quat, vec3 } from 'gl-matrix';
+import { quat, vec3, mat4, vec4 } from 'gl-matrix';
 
 export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
 
   const doc = new Document();
   const buffer = doc.createBuffer();
-  const scene = doc.createScene();
+  const scene = doc.createScene().setName("Scene");
+  const rootNode = doc.createNode();
   const texturesMap: Map<String, Buffer> = new Map();
 
    /// TEXTURES
@@ -107,6 +108,19 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           }
 
         }
+
+        // WEIGHTS / JOINTS
+        const jointsArray = []
+        for (const bonesMap of rwGeometry.skin.boneVertexIndices) {
+          jointsArray.push(...bonesMap);
+        }
+
+        const weightsArray = []
+        for (const vertexWeights of rwGeometry.skin.vertexWeights) {
+          weightsArray.push(...vertexWeights);
+        }
+        const jointsData :Uint16Array = new Uint16Array(jointsArray);
+        const weightsData :Float32Array = new Float32Array(weightsArray);
   
         let primitive = doc.createPrimitive() 
           .setMode(primitiveMode)
@@ -116,18 +130,28 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           .setIndices(doc.createAccessor()
             .setType("SCALAR")
             .setArray(indices))
-          .setAttribute("NORMAL", normalsAccessor);
+          .setAttribute("NORMAL", normalsAccessor)
+          .setAttribute('JOINTS_0', doc.createAccessor()
+            .setType('VEC4')
+            .setArray(jointsData))
+          .setAttribute('WEIGHTS_0', doc.createAccessor()
+            .setType('VEC4')
+            .setArray(weightsData));
+          
           
       mesh.addPrimitive(primitive);
       }
-      scene.addChild( doc.createNode().setMesh(mesh) );
+      rootNode.setMesh(mesh);
+      scene.addChild(rootNode);
     }
     
     // CREATING SKIN SECTION
     try {
       const rwFrames = rwDff.frameList.frames;
-      const skin = doc.createSkin('Normal');
+      const skin = doc.createSkin('Skin');
+      rootNode.setSkin(skin);
       let bones :Node[] = [];
+      const globalMatrices :mat4[] = [];
   
       for (let i = 0; i < rwFrames.length; i++) {
         const frame = rwFrames[i];
@@ -153,7 +177,42 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         skin.addJoint(bone);
         bones.push(bone);
         bones[frame.parentFrame].addChild(bone);
+
+       // const localMatrix = getLocalMatrix(bone);
       }
+
+      let inverseBindMatrices :number[]= [];
+        
+      for(let ibm of rwDff.geometryList.geometries[0].skin.inverseBoneMatrices) {
+        inverseBindMatrices.push(...[
+          ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t, 
+          ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t, 
+          ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t, 
+          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
+      }
+      console.log(`invbm leng: ${inverseBindMatrices.length}`);
+     // inverseBindMatrices.forEach( function (this : number[], value, i) { this[i] = Math.abs(value) > 1e-5 ? value : 0; }, inverseBindMatrices);
+
+     const correctedInverseBindMatrices :number[] = [];
+
+     for (let i = 0; i < 32; i++) {
+      const matrix = inverseBindMatrices.slice(i * 16, (i + 1) * 16);
+      // Исправляем последний элемент (должен быть 1)
+      matrix[15] = 1.0;
+      // Удаляем мусорные значения
+      for (let j = 0; j < 16; j++) {
+        if (Math.abs(matrix[j]) < 1e-4) matrix[j] = 0;
+      }
+      correctedInverseBindMatrices.push(...matrix);
+    }
+      const ibm = new Float32Array(correctedInverseBindMatrices);
+      console.log(ibm);
+      
+    /*  skin.setInverseBindMatrices(
+        doc.createAccessor()
+            .setType('MAT4')
+            .setArray(ibm));*/
+
     } catch(e) {
       console.error(`${e} Cannot create skin data.`);
       return null;
