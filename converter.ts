@@ -3,6 +3,8 @@ import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3,
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
 import { quat, vec3, mat4, vec4 } from 'gl-matrix';
+import { debug } from 'console';
+import { join } from 'path';
 
 export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
 
@@ -118,7 +120,8 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         for (const weights of rwGeometry.skin.vertexWeights) {
           weightsArray.push(...normalizeWeights(weights));
         }
-        const jointsData :Uint16Array = new Uint16Array(jointsArray);
+        const normalizedJoints = normalizeJoints(jointsArray, weightsArray);
+        const jointsData :Uint16Array = new Uint16Array(normalizedJoints);
         const weightsData :Float32Array = new Float32Array(weightsArray);
   
         let primitive = doc.createPrimitive() 
@@ -137,6 +140,24 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
             .setType('VEC4')
             .setArray(weightsData));
         mesh.addPrimitive(primitive);
+        
+        const debugIndexPos = 3;
+        const debugIndex = indices[debugIndexPos];
+        console.log(`
+          --------DEBUG GEOMETRY-------------
+          vertices count: ${vertices.length}
+          indices count: ${indices.length}
+          normals count: ${normals.length}
+          uvs count: ${uvs.length}
+          weights length: ${weightsData.length}
+          joints length: ${jointsData.length}
+          ------------DATA-------------------
+          indices: ${new Uint32Array(indices).subarray(debugIndexPos, debugIndexPos + 1)}
+          joints: ${jointsData.subarray(debugIndex, debugIndex + 4)}
+          weights: ${weightsData.subarray(debugIndex, debugIndex + 4) }
+          vertices: ${new Float32Array(vertices).subarray(debugIndex, debugIndex + 4)}
+          ------------END--------------------
+          `);
       }
 
       meshNode.setMesh(mesh);
@@ -247,6 +268,32 @@ async function quatFromRwMatrix (rwMatrix :RwMatrix3) :Promise<quat> {
     rwMatrix.at.x, rwMatrix.at.y, rwMatrix.at.z]); 
 }
 
+function normalizeJoints(jointsData :number[], weightsData :number[]) :number[] {
+  if (jointsData.length != weightsData.length) {
+    throw new Error("Length of joints and weights array is not equal.")
+  }
+
+  let normalizedJoints :number[] = [];
+  for (let i = 0; i < jointsData.length; i += 4) {
+    const weightsSubArr :number[] = [weightsData[i], weightsData[i+1], weightsData[i+2], weightsData[i+3]];
+    let jointsSubArr :number[] = [jointsData[i], jointsData[i+1], jointsData[i+2], jointsData[i+3]];
+
+    for (let j = 0; j < 4; j++) {
+      if (weightsSubArr[j] == 0) {
+        jointsSubArr[j] = 0;
+      }
+    }
+    normalizedJoints.push(...jointsSubArr);
+  }
+  console.log(`
+    LENGTHS: ${weightsData.length}, ${jointsData.length}, ${normalizedJoints.length}
+    WEIGHTS: ${new Float32Array(weightsData).subarray(0,16)}
+    DEF JOINTS: ${new Uint32Array(jointsData).subarray(0,50)}
+    NORM JOINTS: ${new Uint32Array(normalizedJoints).subarray(0,50)}
+    `);
+
+  return normalizedJoints;
+}
 
 function normalizeWeights(weightsData :number[]) :number[] {
   let w1 = weightsData[0];
