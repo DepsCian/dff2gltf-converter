@@ -81,7 +81,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
       }
 
       const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
-      const primitiveMode = rwGeometry.vertexInformation.length < rwGeometry.triangleInformation.length ? Primitive.Mode.TRIANGLES : Primitive.Mode.TRIANGLE_STRIP;
+      let primitiveMode = Primitive.Mode.TRIANGLES; // TRIANGLES for models and TRIANGLE.STRIP for cars
 
       for (const rwPrimitive of rwBinMesh.meshes) {
         const indices = new Uint32Array(rwPrimitive.indices);
@@ -149,7 +149,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
     try {
       const rwFrames = rwDff.frameList.frames;
       const skin = doc.createSkin('Skin');
-      rootNode.setSkin(skin);
+     // rootNode.setSkin(skin);    // Undone
       let bones :Node[] = [];
       const globalMatrices :mat4[] = [];
   
@@ -191,27 +191,23 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
       }
       console.log(`invbm leng: ${inverseBindMatrices.length}`);
-     // inverseBindMatrices.forEach( function (this : number[], value, i) { this[i] = Math.abs(value) > 1e-5 ? value : 0; }, inverseBindMatrices);
+      inverseBindMatrices.forEach( function (this : number[], value, i) { this[i] = Math.abs(value) > 1e-5 ? value : 0; }, inverseBindMatrices);
 
      const correctedInverseBindMatrices :number[] = [];
 
      for (let i = 0; i < 32; i++) {
       const matrix = inverseBindMatrices.slice(i * 16, (i + 1) * 16);
-      // Исправляем последний элемент (должен быть 1)
       matrix[15] = 1.0;
-      // Удаляем мусорные значения
       for (let j = 0; j < 16; j++) {
         if (Math.abs(matrix[j]) < 1e-4) matrix[j] = 0;
       }
       correctedInverseBindMatrices.push(...matrix);
     }
       const ibm = new Float32Array(correctedInverseBindMatrices);
-      console.log(ibm);
-      
-    /*  skin.setInverseBindMatrices(
+      skin.setInverseBindMatrices(
         doc.createAccessor()
             .setType('MAT4')
-            .setArray(ibm));*/
+            .setArray(ibm));
 
     } catch(e) {
       console.error(`${e} Cannot create skin data.`);
@@ -224,7 +220,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   }
 
   // POST-PROCESSING
-  await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
+  //await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
   //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
