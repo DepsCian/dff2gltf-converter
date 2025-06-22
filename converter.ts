@@ -17,7 +17,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
     const rwTxd: RwTxd = new TxdParser(txd).parse();
 
     if (rwTxd.textureDictionary.textureCount < 1) {
-      throw new Error;
+      throw new Error("Textures not found.");
     }
     for (const textureNative of rwTxd.textureDictionary.textureNatives) {
       const pngBuffer = await createPNGBufferFromRGBA(Buffer.from(textureNative.mipmaps[0]), textureNative.width, textureNative.height);
@@ -115,8 +115,8 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         }
 
         const weightsArray = []
-        for (const vertexWeights of rwGeometry.skin.vertexWeights) {
-          weightsArray.push(...vertexWeights);
+        for (const weights of rwGeometry.skin.vertexWeights) {
+          weightsArray.push(...normalizeWeights(weights));
         }
         const jointsData :Uint16Array = new Uint16Array(jointsArray);
         const weightsData :Float32Array = new Float32Array(weightsArray);
@@ -154,6 +154,10 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         const frame = rwFrames[i];
         const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
         const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
+
+        if (rotationQuat.some((v) => Math.abs(v) > 1)) {
+          quat.normalize(rotationQuat, rotationQuat);
+        }
   
         if (frame.parentFrame == -1) { 
           bones.push(undefined);
@@ -241,6 +245,29 @@ async function quatFromRwMatrix (rwMatrix :RwMatrix3) :Promise<quat> {
   return quat.fromMat3(quat.create(), [rwMatrix.right.x, rwMatrix.right.y, rwMatrix.right.z,
     rwMatrix.up.x, rwMatrix.up.y, rwMatrix.up.z, 
     rwMatrix.at.x, rwMatrix.at.y, rwMatrix.at.z]); 
+}
+
+
+function normalizeWeights(weightsData :number[]) :number[] {
+  let w1 = weightsData[0];
+  let w2 = weightsData[1];
+  let w3 = weightsData[2];
+  let w4 = weightsData[3];
+  const sum = w1 + w2 + w3 + w4;
+
+  if (sum === 0) {
+  w1 = 1.0;
+  }
+
+  else if (Math.abs(sum - 1.0) > 0.001) {
+    w1 /= sum;
+    w2 /= sum;
+    w3 /= sum;
+    w4 /= sum;
+  }
+
+  return [w1, w2, w3, w4];
+  
 }
 
 async function computeNormals(positions :Float32Array, indices :Uint32Array) :Promise<Float32Array> {
