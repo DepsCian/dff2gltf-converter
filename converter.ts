@@ -8,8 +8,8 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 
   const doc = new Document();
   const buffer = doc.createBuffer();
-  const scene = doc.createScene().setName("Scene");
-  const rootNode = doc.createNode();
+  const scene = doc.createScene();
+  const meshNode = doc.createNode('SkinnedMesh');
   const texturesMap: Map<String, Buffer> = new Map();
 
    /// TEXTURES
@@ -139,15 +139,15 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         mesh.addPrimitive(primitive);
       }
 
-      rootNode.setMesh(mesh);
-      scene.addChild(rootNode);
+      meshNode.setMesh(mesh);
+      scene.addChild(meshNode);
     }
     
     // SKIN
     try {
       const rwFrames = rwDff.frameList.frames;
       const skin = doc.createSkin('Skin');
-      rootNode.setSkin(skin); 
+      meshNode.setSkin(skin); 
       let bones :Node[] = [];
   
       for (let i = 0; i < rwFrames.length; i++) {
@@ -167,6 +167,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   
         if (frame.parentFrame == 0) { 
           skin.addJoint(bone);
+          scene.addChild(bone);
           bones.push(bone)
           continue;
         }
@@ -210,7 +211,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   }
 
   // POST-PROCESSING
-  //await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
+  await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
   //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
