@@ -35,7 +35,6 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
   
     for (const rwGeometry of rwDff.geometryList.geometries) {
       const mesh = doc.createMesh();
-
       const rwTextureInfo = rwGeometry.textureMappingInformation;
       const rwUvsArray :RwTextureCoordinate[] = rwTextureInfo && rwTextureInfo.length > 0 ? rwTextureInfo[0] : undefined;
       const rwVerticesArray :RwVector3[] = rwGeometry.hasVertices && rwGeometry.vertexInformation.length > 0 ? rwGeometry.vertexInformation : undefined;
@@ -137,21 +136,19 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           .setAttribute('WEIGHTS_0', doc.createAccessor()
             .setType('VEC4')
             .setArray(weightsData));
-          
-          
-      mesh.addPrimitive(primitive);
+        mesh.addPrimitive(primitive);
       }
+
       rootNode.setMesh(mesh);
       scene.addChild(rootNode);
     }
     
-    // CREATING SKIN SECTION
+    // SKIN
     try {
       const rwFrames = rwDff.frameList.frames;
       const skin = doc.createSkin('Skin');
-     // rootNode.setSkin(skin);    // Undone
+      rootNode.setSkin(skin); 
       let bones :Node[] = [];
-      const globalMatrices :mat4[] = [];
   
       for (let i = 0; i < rwFrames.length; i++) {
         const frame = rwFrames[i];
@@ -173,16 +170,13 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           bones.push(bone)
           continue;
         }
-  
+
         skin.addJoint(bone);
         bones.push(bone);
         bones[frame.parentFrame].addChild(bone);
-
-       // const localMatrix = getLocalMatrix(bone);
       }
 
       let inverseBindMatrices :number[]= [];
-        
       for(let ibm of rwDff.geometryList.geometries[0].skin.inverseBoneMatrices) {
         inverseBindMatrices.push(...[
           ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t, 
@@ -190,24 +184,20 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t, 
           ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
       }
-      console.log(`invbm leng: ${inverseBindMatrices.length}`);
       inverseBindMatrices.forEach( function (this : number[], value, i) { this[i] = Math.abs(value) > 1e-5 ? value : 0; }, inverseBindMatrices);
 
-     const correctedInverseBindMatrices :number[] = [];
+      const correctedInverseBindMatrices :number[] = [];
 
-     for (let i = 0; i < 32; i++) {
-      const matrix = inverseBindMatrices.slice(i * 16, (i + 1) * 16);
-      matrix[15] = 1.0;
-      for (let j = 0; j < 16; j++) {
-        if (Math.abs(matrix[j]) < 1e-4) matrix[j] = 0;
+      for (let i = 0; i < 32; i++) {
+        const matrix = inverseBindMatrices.slice(i * 16, (i + 1) * 16);
+        matrix[15] = 1.0;
+        for (let j = 0; j < 16; j++) {
+          if (Math.abs(matrix[j]) < 1e-4) matrix[j] = 0;
+        }
+        correctedInverseBindMatrices.push(...matrix);
       }
-      correctedInverseBindMatrices.push(...matrix);
-    }
-      const ibm = new Float32Array(correctedInverseBindMatrices);
-      skin.setInverseBindMatrices(
-        doc.createAccessor()
-            .setType('MAT4')
-            .setArray(ibm));
+      const inverseBindMatricesAccessor = doc.createAccessor().setType('MAT4').setArray(new Float32Array(correctedInverseBindMatrices));
+      skin.setInverseBindMatrices(inverseBindMatricesAccessor);
 
     } catch(e) {
       console.error(`${e} Cannot create skin data.`);
