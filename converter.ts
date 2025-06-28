@@ -1,13 +1,16 @@
 import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
-import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
+import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser, RwBone, RwFrame } from 'rw-parser';
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
-import { quat, vec3, mat4, vec4 } from 'gl-matrix';
-import { debug } from 'console';
-import { join } from 'path';
+import { quat, vec3 } from 'gl-matrix';
 
-export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
+interface Bone {
+  name: string,
+  boneData: RwBone,
+  frameData: RwFrame
+}
 
+export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promise<Document> {
   const doc = new Document();
   const buffer = doc.createBuffer();
   const scene = doc.createScene();
@@ -29,7 +32,6 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
     console.error('Invalid .txd file.');
     return null;
   }
-
 
   // GEOMETRIES
   try {
@@ -140,52 +142,56 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
             .setType('VEC4')
             .setArray(weightsData));
         mesh.addPrimitive(primitive);
-        
-        const debugIndexPos = 3;
-        const debugIndex = indices[debugIndexPos];
-        console.log(`
-          --------DEBUG GEOMETRY-------------
-          vertices count: ${vertices.length}
-          indices count: ${indices.length}
-          normals count: ${normals.length}
-          uvs count: ${uvs.length}
-          weights length: ${weightsData.length}
-          joints length: ${jointsData.length}
-          ------------DATA-------------------
-          indices: ${new Uint32Array(indices).subarray(debugIndexPos, debugIndexPos + 1)}
-          joints: ${jointsData.subarray(debugIndex, debugIndex + 4)}
-          weights: ${weightsData.subarray(debugIndex, debugIndex + 4) }
-          vertices: ${new Float32Array(vertices).subarray(debugIndex, debugIndex + 4)}
-          ------------END--------------------
-          `);
       }
 
       meshNode.setMesh(mesh);
       scene.addChild(meshNode);
     }
     
-    // SKIN
+    // SKELETON
     try {
       const rwFrames = rwDff.frameList.frames;
       const skin = doc.createSkin('Skin');
       meshNode.setSkin(skin); 
       let bones :Node[] = [];
-  
+      let bonesTable :Bone[] = [];
+      const BONES_ORDER :number[] = [0, 1, 2, 3, 4, 5, 8, 6, 7, 31, 32, 33, 34, 35, 36, 21, 22, 23, 24, 25, 26, 302, 301, 201, 41, 42, 43, 44, 51, 52, 53, 54];
+      const PARENTS_ORDER :number[] = [0, 1, 2, 3, 4, 5, 6, 6, 6, 5, 10, 11, 12, 13, 14, 5, 16, 17, 18, 19, 20, 4, 4, 3, 2, 25, 26, 27, 2, 29, 30, 31];
+      rwDff.animNodes.unshift({boneId: -1 , bones: [], bonesCount: 0});
+
       for (let i = 0; i < rwFrames.length; i++) {
-        const frame = rwFrames[i];
+        let boneId = rwDff.animNodes[i].boneId;
+        bonesTable.push({
+          name: rwDff.dummies[i-1],
+          boneData: {
+            boneId: boneId, 
+            boneIndex: BONES_ORDER.indexOf(boneId) + 1,
+            flags: 0
+          },
+          frameData: {
+            parentFrame: PARENTS_ORDER[BONES_ORDER.indexOf(boneId)],
+            coordinatesOffset: rwFrames[i].coordinatesOffset,
+            rotationMatrix: rwFrames[i].rotationMatrix
+          }
+        });
+      }
+      bonesTable.sort((a, b) => a.boneData.boneIndex > b.boneData.boneIndex ? 1 : -1);
+
+      for (const rwBone of bonesTable) {
+        const frame = rwBone.frameData;
         const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
         const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
-
+    
         if (rotationQuat.some((v) => Math.abs(v) > 1)) {
           quat.normalize(rotationQuat, rotationQuat);
         }
   
-        if (frame.parentFrame == -1) { 
+        if (frame.parentFrame == undefined) { 
           bones.push(undefined);
           continue;
         }
   
-        const bone = doc.createNode(rwDff.dummies[i-1])
+        const bone = doc.createNode(rwBone.name)
               .setTranslation(translationVector)
               .setRotation([rotationQuat[0], rotationQuat[1], rotationQuat[2], rotationQuat[3]])
               .setScale([1, 1, 1]);
@@ -193,14 +199,14 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
         if (frame.parentFrame == 0) { 
           skin.addJoint(bone);
           scene.addChild(bone);
-          bones.push(bone)
+          bones.push(bone);
           continue;
         }
 
         skin.addJoint(bone);
         bones.push(bone);
         bones[frame.parentFrame].addChild(bone);
-      }
+     }
 
       let inverseBindMatrices :number[]= [];
       for(let ibm of rwDff.geometryList.geometries[0].skin.inverseBoneMatrices) {
@@ -243,11 +249,10 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
 }
 
 async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+  return new Promise( (resolve, reject) => {
     const png = new PNG( { width, height, filterType: 4, colorType: 6 } );
-    png.data = rgbaBuffer;
-
     const chunks: Buffer[] = [];
+    png.data = rgbaBuffer;
     png.pack()
       .on('data', (chunk: Buffer) => {
         chunks.push(chunk);
@@ -285,12 +290,6 @@ function normalizeJoints(jointsData :number[], weightsData :number[]) :number[] 
     }
     normalizedJoints.push(...jointsSubArr);
   }
-  console.log(`
-    LENGTHS: ${weightsData.length}, ${jointsData.length}, ${normalizedJoints.length}
-    WEIGHTS: ${new Float32Array(weightsData).subarray(0,16)}
-    DEF JOINTS: ${new Uint32Array(jointsData).subarray(0,50)}
-    NORM JOINTS: ${new Uint32Array(normalizedJoints).subarray(0,50)}
-    `);
 
   return normalizedJoints;
 }
@@ -314,7 +313,6 @@ function normalizeWeights(weightsData :number[]) :number[] {
   }
 
   return [w1, w2, w3, w4];
-  
 }
 
 async function computeNormals(positions :Float32Array, indices :Uint32Array) :Promise<Float32Array> {
