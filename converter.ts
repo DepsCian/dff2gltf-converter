@@ -1,15 +1,20 @@
-import { Document, Primitive, PropertyType } from '@gltf-transform/core';
-import { DffParser, RwBinMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
+import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
+import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser, RwBone, RwFrame } from 'rw-parser';
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
-import { vec3 } from 'gl-matrix';
+import { mat4, quat, vec3 } from 'gl-matrix';
 
+interface Bone {
+  name: string,
+  boneData: RwBone,
+  frameData: RwFrame
+}
 
-export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promise<Document> {
-
+export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promise<Document> {
   const doc = new Document();
   const buffer = doc.createBuffer();
   const scene = doc.createScene();
+  const meshNode = doc.createNode('SkinnedMesh');
   const texturesMap: Map<String, Buffer> = new Map();
 
    /// TEXTURES
@@ -17,7 +22,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
     const rwTxd: RwTxd = new TxdParser(txd).parse();
 
     if (rwTxd.textureDictionary.textureCount < 1) {
-      throw new Error;
+      throw new Error("Textures not found.");
     }
     for (const textureNative of rwTxd.textureDictionary.textureNatives) {
       const pngBuffer = await createPNGBufferFromRGBA(Buffer.from(textureNative.mipmaps[0]), textureNative.width, textureNative.height);
@@ -28,14 +33,12 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
     return null;
   }
 
-
   // GEOMETRIES
   try {
     const rwDff = new DffParser(dff).parse();
   
     for (const rwGeometry of rwDff.geometryList.geometries) {
       const mesh = doc.createMesh();
-
       const rwTextureInfo = rwGeometry.textureMappingInformation;
       const rwUvsArray :RwTextureCoordinate[] = rwTextureInfo && rwTextureInfo.length > 0 ? rwTextureInfo[0] : undefined;
       const rwVerticesArray :RwVector3[] = rwGeometry.hasVertices && rwGeometry.vertexInformation.length > 0 ? rwGeometry.vertexInformation : undefined;
@@ -81,7 +84,7 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
       }
 
       const normalsAccessor = doc.createAccessor().setType("VEC3").setArray(normals);
-      const primitiveMode = rwGeometry.vertexInformation.length < rwGeometry.triangleInformation.length ? Primitive.Mode.TRIANGLES : Primitive.Mode.TRIANGLE_STRIP;
+      let primitiveMode = Primitive.Mode.TRIANGLES; // TRIANGLES for models and TRIANGLE.STRIP for cars
 
       for (const rwPrimitive of rwBinMesh.meshes) {
         const indices = new Uint32Array(rwPrimitive.indices);
@@ -108,6 +111,20 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           }
 
         }
+
+        // WEIGHTS / JOINTS
+        const jointsArray = []
+        for (const bonesMap of rwGeometry.skin.boneVertexIndices) {
+          jointsArray.push(...bonesMap);
+        }
+
+        const weightsArray = []
+        for (const weights of rwGeometry.skin.vertexWeights) {
+          weightsArray.push(...normalizeWeights(weights));
+        }
+        const normalizedJoints = normalizeJoints(jointsArray, weightsArray);
+        const jointsData :Uint16Array = new Uint16Array(normalizedJoints);
+        const weightsData :Float32Array = new Float32Array(weightsArray);
   
         let primitive = doc.createPrimitive() 
           .setMode(primitiveMode)
@@ -117,35 +134,118 @@ export default async function convertDffToGlb( dff: Buffer, txd: Buffer): Promis
           .setIndices(doc.createAccessor()
             .setType("SCALAR")
             .setArray(indices))
-          .setAttribute("NORMAL", normalsAccessor);
-          
-      mesh.addPrimitive(primitive);
+          .setAttribute("NORMAL", normalsAccessor)
+          .setAttribute('JOINTS_0', doc.createAccessor()
+            .setType('VEC4')
+            .setArray(jointsData))
+          .setAttribute('WEIGHTS_0', doc.createAccessor()
+            .setType('VEC4')
+            .setArray(weightsData));
+        mesh.addPrimitive(primitive);
       }
-      scene.addChild( doc.createNode().setMesh(mesh) );
+
+      meshNode.setMesh(mesh);
+      scene.addChild(meshNode);
     }
+    
+    // SKELETON
+    try {
+      const rwFrames = rwDff.frameList.frames;
+      const skin = doc.createSkin('Skin');
+      meshNode.setSkin(skin); 
+      let bones :Node[] = [];
+      let bonesTable :Bone[] = [];
+      const BONES_ORDER :number[] = [0, 1, 2, 3, 4, 5, 8, 6, 7, 31, 32, 33, 34, 35, 36, 21, 22, 23, 24, 25, 26, 302, 301, 201, 41, 42, 43, 44, 51, 52, 53, 54];
+      const PARENTS_ORDER :number[] = [0, 1, 2, 3, 4, 5, 6, 6, 6, 5, 10, 11, 12, 13, 14, 5, 16, 17, 18, 19, 20, 4, 4, 3, 2, 25, 26, 27, 2, 29, 30, 31];
+      rwDff.animNodes.unshift({boneId: -1 , bones: [], bonesCount: 0});
+
+      for (let i = 0; i < rwFrames.length; i++) {
+        let boneId = rwDff.animNodes[i].boneId;
+        bonesTable.push({
+          name: rwDff.dummies[i-1],
+          boneData: {
+            boneId: boneId, 
+            boneIndex: BONES_ORDER.indexOf(boneId) + 1,
+            flags: 0
+          },
+          frameData: {
+            parentFrame: PARENTS_ORDER[BONES_ORDER.indexOf(boneId)],
+            coordinatesOffset: rwFrames[i].coordinatesOffset,
+            rotationMatrix: rwFrames[i].rotationMatrix
+          }
+        });
+      }
+      bonesTable.sort((a, b) => a.boneData.boneIndex > b.boneData.boneIndex ? 1 : -1);
+
+      for (const rwBone of bonesTable) {
+        const frame = rwBone.frameData;
+        const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
+        const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
+        quat.normalize(rotationQuat, rotationQuat);
+  
+        if (frame.parentFrame == undefined) { 
+          bones.push(undefined);
+          continue;
+        }
+  
+        const bone = doc.createNode(rwBone.name)
+              .setTranslation(translationVector)
+              .setRotation([rotationQuat[0], rotationQuat[1], rotationQuat[2], rotationQuat[3]])
+              .setScale([1, 1, 1]);
+  
+        if (frame.parentFrame == 0) { 
+          skin.addJoint(bone);
+          scene.addChild(bone);
+          bones.push(bone);
+          continue;
+        }
+
+        skin.addJoint(bone);
+        bones.push(bone);
+        bones[frame.parentFrame].addChild(bone);
+     }
+
+     // IBM
+      let inverseBindMatrices :number[]= [];
+      const rwInverseBindMatrices = rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
+      for (let ibm of rwInverseBindMatrices) {
+        inverseBindMatrices.push(...[
+          ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t, 
+          ibm.up.x,    ibm.up.y,    ibm.up.z,    ibm.up.t, 
+          ibm.at.x,    ibm.at.y,    ibm.at.z,    ibm.at.t, 
+          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
+      }
+
+      const correctedInverseBindMatrices :number[] = [];
+      for (let i = 0; i < rwInverseBindMatrices.length; i++) {
+        const matrix :mat4 = new Float32Array(inverseBindMatrices.slice(i * 16, (i + 1) * 16));
+        correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
+     }
+      const inverseBindMatricesAccessor = doc.createAccessor().setType('MAT4').setArray(new Float32Array(correctedInverseBindMatrices));
+      skin.setInverseBindMatrices(inverseBindMatricesAccessor);
+
+    } catch(e) {
+      console.error(`${e} Cannot create skin data.`);
+      return null;
+    }
+
   } catch(e) {
     console.error(`${e} Cannot create geometry mesh.`)
     return null;
   }
 
-
   // POST-PROCESSING
- 
   await doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
   //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
 }
 
-
-
-
 async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+  return new Promise( (resolve, reject) => {
     const png = new PNG( { width, height, filterType: 4, colorType: 6 } );
-    png.data = rgbaBuffer;
-
     const chunks: Buffer[] = [];
+    png.data = rgbaBuffer;
     png.pack()
       .on('data', (chunk: Buffer) => {
         chunks.push(chunk);
@@ -158,6 +258,54 @@ async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height
         reject(err);
       });
   });
+}
+
+async function quatFromRwMatrix (rwMatrix :RwMatrix3) :Promise<quat> {
+  return quat.fromMat3(quat.create(), [rwMatrix.right.x, rwMatrix.right.y, rwMatrix.right.z,
+    rwMatrix.up.x, rwMatrix.up.y, rwMatrix.up.z, 
+    rwMatrix.at.x, rwMatrix.at.y, rwMatrix.at.z]); 
+}
+
+function normalizeJoints(jointsData :number[], weightsData :number[]) :number[] {
+  if (jointsData.length != weightsData.length) {
+    throw new Error("Length of joints and weights array is not equal.")
+  }
+
+  let normalizedJoints :number[] = [];
+  for (let i = 0; i < jointsData.length; i += 4) {
+    const weightsSubArr :number[] = [weightsData[i], weightsData[i+1], weightsData[i+2], weightsData[i+3]];
+    let jointsSubArr :number[] = [jointsData[i], jointsData[i+1], jointsData[i+2], jointsData[i+3]];
+
+    for (let j = 0; j < 4; j++) {
+      if (weightsSubArr[j] == 0) {
+        jointsSubArr[j] = 0;
+      }
+    }
+    normalizedJoints.push(...jointsSubArr);
+  }
+
+  return normalizedJoints;
+}
+
+function normalizeWeights(weightsData :number[]) :number[] {
+  let w1 = weightsData[0];
+  let w2 = weightsData[1];
+  let w3 = weightsData[2];
+  let w4 = weightsData[3];
+  const sum = w1 + w2 + w3 + w4;
+
+  if (sum === 0) {
+  w1 = 1.0;
+  }
+
+  else if (Math.abs(sum - 1.0) > 0.001) {
+    w1 /= sum;
+    w2 /= sum;
+    w3 /= sum;
+    w4 /= sum;
+  }
+
+  return [w1, w2, w3, w4];
 }
 
 async function computeNormals(positions :Float32Array, indices :Uint32Array) :Promise<Float32Array> {
@@ -232,4 +380,23 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
   }
 
   return normals;
+}
+
+function normalizeMatrix (matrix :mat4) :mat4 {
+  const rotation = quat.create();
+  const scale = vec3.create();
+  const translation = vec3.create();
+
+  mat4.getRotation(rotation, matrix);
+  mat4.getScaling(scale, matrix);
+  mat4.getTranslation(translation, matrix);
+
+  const normalizedMatrix = mat4.fromRotationTranslationScale(
+    mat4.create(),
+    rotation,
+    translation,
+    [1, 1, 1]
+  );
+
+  return normalizedMatrix;
 }

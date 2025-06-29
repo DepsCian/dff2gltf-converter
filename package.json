@@ -19,8 +19,12 @@
   },
   "dependencies": {
     "@gltf-transform/core": "^4.1.3",
+    "@gltf-transform/functions": "^4.2.0",
+    "@types/pngjs": "^6.0.5",
+    "gl-matrix": "^3.4.3",
     "gltf-js-utils": "^7.0.0",
-    "rw-parser": "^1.4.0"
+    "pngjs": "^7.0.0",
+    "rw-parser": "^1.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.17"
