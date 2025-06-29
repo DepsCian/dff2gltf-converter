@@ -2,7 +2,7 @@ import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
 import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser, RwBone, RwFrame } from 'rw-parser';
 import { PNG } from 'pngjs';
 import { dedup } from '@gltf-transform/functions';
-import { quat, vec3 } from 'gl-matrix';
+import { mat4, quat, vec3 } from 'gl-matrix';
 
 interface Bone {
   name: string,
@@ -181,10 +181,7 @@ export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promis
         const frame = rwBone.frameData;
         const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
         const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
-    
-        if (rotationQuat.some((v) => Math.abs(v) > 1)) {
-          quat.normalize(rotationQuat, rotationQuat);
-        }
+        quat.normalize(rotationQuat, rotationQuat);
   
         if (frame.parentFrame == undefined) { 
           bones.push(undefined);
@@ -208,26 +205,22 @@ export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promis
         bones[frame.parentFrame].addChild(bone);
      }
 
+     // IBM
       let inverseBindMatrices :number[]= [];
-      for(let ibm of rwDff.geometryList.geometries[0].skin.inverseBoneMatrices) {
+      const rwInverseBindMatrices = rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
+      for (let ibm of rwInverseBindMatrices) {
         inverseBindMatrices.push(...[
           ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t, 
-          ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t, 
-          ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t, 
+          ibm.up.x,    ibm.up.y,    ibm.up.z,    ibm.up.t, 
+          ibm.at.x,    ibm.at.y,    ibm.at.z,    ibm.at.t, 
           ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
       }
-      inverseBindMatrices.forEach( function (this : number[], value, i) { this[i] = Math.abs(value) > 1e-5 ? value : 0; }, inverseBindMatrices);
 
       const correctedInverseBindMatrices :number[] = [];
-
-      for (let i = 0; i < 32; i++) {
-        const matrix = inverseBindMatrices.slice(i * 16, (i + 1) * 16);
-        matrix[15] = 1.0;
-        for (let j = 0; j < 16; j++) {
-          if (Math.abs(matrix[j]) < 1e-4) matrix[j] = 0;
-        }
-        correctedInverseBindMatrices.push(...matrix);
-      }
+      for (let i = 0; i < rwInverseBindMatrices.length; i++) {
+        const matrix :mat4 = new Float32Array(inverseBindMatrices.slice(i * 16, (i + 1) * 16));
+        correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
+     }
       const inverseBindMatricesAccessor = doc.createAccessor().setType('MAT4').setArray(new Float32Array(correctedInverseBindMatrices));
       skin.setInverseBindMatrices(inverseBindMatricesAccessor);
 
@@ -387,4 +380,23 @@ async function computeNormals(positions :Float32Array, indices :Uint32Array) :Pr
   }
 
   return normals;
+}
+
+function normalizeMatrix (matrix :mat4) :mat4 {
+  const rotation = quat.create();
+  const scale = vec3.create();
+  const translation = vec3.create();
+
+  mat4.getRotation(rotation, matrix);
+  mat4.getScaling(scale, matrix);
+  mat4.getTranslation(translation, matrix);
+
+  const normalizedMatrix = mat4.fromRotationTranslationScale(
+    mat4.create(),
+    rotation,
+    translation,
+    [1, 1, 1]
+  );
+
+  return normalizedMatrix;
 }
