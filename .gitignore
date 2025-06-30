@@ -2,4 +2,3 @@ node_modules/
 assets/
 output/
 *.js
-index.ts
