@@ -1,14 +1,12 @@
 import { Document, Primitive, PropertyType, Node } from '@gltf-transform/core';
-import { DffParser, RwBinMesh, RwMatrix3, RwTextureCoordinate, RwTxd, RwVector3, TxdParser, RwBone, RwFrame } from 'rw-parser';
-import { PNG } from 'pngjs';
+import { DffParser, RwBinMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { dedup } from '@gltf-transform/functions';
 import { mat4, quat, vec3 } from 'gl-matrix';
+import { createPNGBufferFromRGBA } from './utils/imageUtils.js';
+import { Bone, normalizeJoints, normalizeWeights } from './utils/skinUtils.js';
+import { normalizeMatrix, quatFromRwMatrix } from './utils/matrixUtils.js';
+import { computeNormals } from './utils/geometryUtils.js';
 
-interface Bone {
-  name: string,
-  boneData: RwBone,
-  frameData: RwFrame
-}
 
 export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promise<Document> {
   const doc = new Document();
@@ -29,7 +27,7 @@ export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promis
       texturesMap.set(textureNative.textureName, pngBuffer);
     }
   } catch(e) {
-    console.error('Invalid .txd file.');
+    console.error(e + ' Cannot read .txd file.');
     return null;
   }
 
@@ -239,164 +237,4 @@ export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promis
   //await doc.transform(normalize({ overwrite: false }));
   
   return doc;
-}
-
-async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
-  return new Promise( (resolve, reject) => {
-    const png = new PNG( { width, height, filterType: 4, colorType: 6 } );
-    const chunks: Buffer[] = [];
-    png.data = rgbaBuffer;
-    png.pack()
-      .on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      })
-      .on('end', () => {
-        const buffer = Buffer.concat(chunks);
-        resolve(buffer);
-      })
-      .on('error', (err: Error) => {
-        reject(err);
-      });
-  });
-}
-
-async function quatFromRwMatrix (rwMatrix :RwMatrix3) :Promise<quat> {
-  return quat.fromMat3(quat.create(), [rwMatrix.right.x, rwMatrix.right.y, rwMatrix.right.z,
-    rwMatrix.up.x, rwMatrix.up.y, rwMatrix.up.z, 
-    rwMatrix.at.x, rwMatrix.at.y, rwMatrix.at.z]); 
-}
-
-function normalizeJoints(jointsData :number[], weightsData :number[]) :number[] {
-  if (jointsData.length != weightsData.length) {
-    throw new Error("Length of joints and weights array is not equal.")
-  }
-
-  let normalizedJoints :number[] = [];
-  for (let i = 0; i < jointsData.length; i += 4) {
-    const weightsSubArr :number[] = [weightsData[i], weightsData[i+1], weightsData[i+2], weightsData[i+3]];
-    let jointsSubArr :number[] = [jointsData[i], jointsData[i+1], jointsData[i+2], jointsData[i+3]];
-
-    for (let j = 0; j < 4; j++) {
-      if (weightsSubArr[j] == 0) {
-        jointsSubArr[j] = 0;
-      }
-    }
-    normalizedJoints.push(...jointsSubArr);
-  }
-
-  return normalizedJoints;
-}
-
-function normalizeWeights(weightsData :number[]) :number[] {
-  let w1 = weightsData[0];
-  let w2 = weightsData[1];
-  let w3 = weightsData[2];
-  let w4 = weightsData[3];
-  const sum = w1 + w2 + w3 + w4;
-
-  if (sum === 0) {
-  w1 = 1.0;
-  }
-
-  else if (Math.abs(sum - 1.0) > 0.001) {
-    w1 /= sum;
-    w2 /= sum;
-    w3 /= sum;
-    w4 /= sum;
-  }
-
-  return [w1, w2, w3, w4];
-}
-
-async function computeNormals(positions :Float32Array, indices :Uint32Array) :Promise<Float32Array> {
-  const vertexCount = positions.length / 3;
-  const normals = new Float32Array(positions.length);
-  const vertexToTriangles: Map<number, number[][]> = new Map();
-  for (let i = 0; i < indices.length; i += 3) {
-    const triangleIndices = [
-      indices[i],
-      indices[i + 1],
-      indices[i + 2],
-    ];
-
-    if (triangleIndices[0] === triangleIndices[1] || triangleIndices[1] === triangleIndices[2] || triangleIndices[0] === triangleIndices[2]) {
-      continue;
-    }
-
-    for (const index of triangleIndices) {
-      if (!vertexToTriangles.has(index)) {
-        vertexToTriangles.set(index, []);
-      }
-      vertexToTriangles.get(index)?.push([...triangleIndices]);
-    }
-  }
-
-  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex++) {
-    const triangles = vertexToTriangles.get(vertexIndex) || [];
-    const normal = vec3.create();
-
-    for (const triangleIndices of triangles) {
-      const v0 = vec3.fromValues(
-        positions[triangleIndices[0] * 3],
-        positions[triangleIndices[0] * 3 + 1],
-        positions[triangleIndices[0] * 3 + 2]
-      );
-      const v1 = vec3.fromValues(
-        positions[triangleIndices[1] * 3],
-        positions[triangleIndices[1] * 3 + 1],
-        positions[triangleIndices[1] * 3 + 2]
-      );
-      const v2 = vec3.fromValues(
-        positions[triangleIndices[2] * 3],
-        positions[triangleIndices[2] * 3 + 1],
-        positions[triangleIndices[2] * 3 + 2]
-      );
-
-      const edge1 = vec3.create();
-      const edge2 = vec3.create();
-      const triangleNormal = vec3.create();
-
-      vec3.subtract(edge1, v1, v0);
-      vec3.subtract(edge2, v2, v0);
-      vec3.cross(triangleNormal, edge1, edge2);
-
-      if (vec3.sqrLen(triangleNormal) === 0) {
-        continue;
-      }
-
-      vec3.normalize(triangleNormal, triangleNormal);
-      vec3.add(normal, normal, triangleNormal);
-    }
-
-    if (vec3.sqrLen(normal) === 0) {
-      normal[1] = 1;
-    }
-
-    vec3.normalize(normal, normal);
-
-    normals[vertexIndex * 3] = normal[0];
-    normals[vertexIndex * 3 + 1] = normal[1];
-    normals[vertexIndex * 3 + 2] = normal[2];
-  }
-
-  return normals;
-}
-
-function normalizeMatrix (matrix :mat4) :mat4 {
-  const rotation = quat.create();
-  const scale = vec3.create();
-  const translation = vec3.create();
-
-  mat4.getRotation(rotation, matrix);
-  mat4.getScaling(scale, matrix);
-  mat4.getTranslation(translation, matrix);
-
-  const normalizedMatrix = mat4.fromRotationTranslationScale(
-    mat4.create(),
-    rotation,
-    translation,
-    [1, 1, 1]
-  );
-
-  return normalizedMatrix;
 }
