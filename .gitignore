@@ -2,3 +2,4 @@ node_modules/
 assets/
 output/
 *.js
+dist/

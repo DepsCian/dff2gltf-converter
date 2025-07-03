@@ -1,2 +1,3 @@
 import { Document } from '@gltf-transform/core';
-export default function convertDffToGlb(dff: Buffer, txd: Buffer): Promise<Document>;
+import { ModelType } from './types/ModelTypes.js';
+export default function dffToGltf(dff: Buffer, txd: Buffer, modelType?: ModelType, exportPath?: string): Promise<Document>;

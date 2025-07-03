@@ -6,9 +6,10 @@ import { createPNGBufferFromRGBA } from './utils/imageUtils.js';
 import { Bone, normalizeJoints, normalizeWeights } from './utils/skinUtils.js';
 import { normalizeMatrix, quatFromRwMatrix } from './utils/matrixUtils.js';
 import { computeNormals } from './utils/geometryUtils.js';
+import { ModelType } from './types/ModelTypes.js';
 
 
-export default async function convertDffToGlb (dff: Buffer, txd: Buffer): Promise<Document> {
+export default async function dffToGltf (dff: Buffer, txd: Buffer, modelType?: ModelType, exportPath? :string): Promise<Document> {
   const doc = new Document();
   const buffer = doc.createBuffer();
   const scene = doc.createScene();
