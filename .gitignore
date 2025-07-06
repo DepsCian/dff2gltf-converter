@@ -1,5 +1,7 @@
 node_modules/
 assets/
+dist/
 output/
+src/test.ts
 *.js
-index.ts
+
