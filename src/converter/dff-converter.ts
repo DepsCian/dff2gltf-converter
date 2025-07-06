@@ -228,7 +228,7 @@ async convertSkinData(rwDff :RwDff) {
     
               material.setBaseColorTexture(texture);
               } else {
-                throw new Error(`Texture ${textureName} not found in .txd`);
+                console.error(`Texture ${textureName} not found in .txd`);
               }
     
             }
