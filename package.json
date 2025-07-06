@@ -1,7 +1,7 @@
 {
   "name": "dff2glb-converter",
-  "version": "0.7.0",
-  "description": "3D model converter from .dff/.txd to glTF",
+  "version": "0.8.0",
+  "description": "3D model converter from .dff/.txd to glTF and glB",
   "homepage": "https://github.com/AlterSDB/dff2glb-converter#readme",
   "bugs": {
     "url": "https://github.com/AlterSDB/dff2glb-converter/issues"
@@ -10,8 +10,9 @@
     "type": "git",
     "url": "git+https://github.com/AlterSDB/dff2glb-converter.git"
   },
-  "license": "ISC",
+  "license": "MIT",
   "keywords": [
+    "opengl",
     "renderware",
     "gta",
     ".dff",
@@ -22,11 +23,11 @@
     "converter"
   ],
   "author": "AlterSDB",
-  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+   "type": "module",
   "scripts": {
-    "start": "tsc && node dist/test.js",
+    "start": "tsc && node ./dist/index.js",
     "build": "tsc"
   },
   "bin": {
@@ -38,8 +39,7 @@
     "@types/pngjs": "^6.0.5",
     "gl-matrix": "^3.4.3",
     "pngjs": "^7.0.0",
-    "rw-parser": "^1.5.0",
-    "yargs": "^18.0.0"
+    "rw-parser": "^1.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

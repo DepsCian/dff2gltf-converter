@@ -1,9 +1,10 @@
 import { PNG } from "pngjs";
 
 export async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number, height: number): Promise<Buffer> {
-  return new Promise( (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const png = new PNG( { width, height, filterType: 4, colorType: 6 } );
     const chunks: Buffer[] = [];
+
     png.data = rgbaBuffer;
     png.pack()
       .on('data', (chunk: Buffer) => {
@@ -16,5 +17,6 @@ export async function createPNGBufferFromRGBA(rgbaBuffer: Buffer, width: number,
       .on('error', (err: Error) => {
         reject(err);
       });
+
   });
 }
