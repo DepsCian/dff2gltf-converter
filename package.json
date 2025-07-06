@@ -27,7 +27,7 @@
   "types": "dist/index.d.ts",
    "type": "module",
   "scripts": {
-    "start": "tsc && node ./dist/index.js",
+    "start": "tsc && node ./dist/test.js",
     "build": "tsc"
   },
   "bin": {
