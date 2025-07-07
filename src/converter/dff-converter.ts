@@ -30,27 +30,30 @@ export class DffConverter {
  
 
   async convertDffToGltf(): Promise<DffConversionResult> {
-    this._doc = new Document();
-    this._doc.createBuffer();
-    this._scene = this._doc.createScene();
-    this._meshNode = this._doc.createNode('Mesh');
-    this._texturesMap = await this.convertTextures();
+    return new Promise(async (resolve, reject) => {
+      this._doc = new Document();
+      this._doc.createBuffer();
+      this._scene = this._doc.createScene();
+      this._meshNode = this._doc.createNode('Mesh');
+      this._texturesMap = await this.convertTextures();
 
-    try {
-      if(this.modelType == ModelType.CAR) throw new Error("Car converter is not implemented right now.");
-      const rwDff = new DffParser(this.dff).parse();
-      for (const rwGeometry of rwDff.geometryList.geometries) {
-        await this.convertGeometry(rwGeometry);
+      try {
+        if (this.modelType == ModelType.CAR) throw new Error("Car converter is not implemented right now.");
+        const rwDff = new DffParser(this.dff).parse();
+  
+        for (const rwGeometry of rwDff.geometryList.geometries) {
+          await this.convertGeometry(rwGeometry);
+        }
+       if (this.modelType == ModelType.SKIN) await this.convertSkinData(rwDff);
+  
+      } catch(e) {
+        e = (`${e}. Cannot create geometry mesh.`)
+        reject(e);
       }
-     if (this.modelType == ModelType.SKIN) await this.convertSkinData(rwDff);
+      await this._doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
 
-    } catch(e) {
-      console.error(`${e} Cannot create geometry mesh.`)
-      return null;
-    }
-    await this._doc.transform(dedup({propertyTypes: [ PropertyType.ACCESSOR ] }));
-    
-    return new DffConversionResult(this._doc);
+      resolve(new DffConversionResult(this._doc));
+    });
   }
 
 
