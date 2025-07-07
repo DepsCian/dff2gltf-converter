@@ -1,3 +1,5 @@
 assets/
 output/
 node-modules/
+dist/test.js
+dist/test.d.ts

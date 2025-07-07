@@ -70,7 +70,7 @@ async convertTextures() :Promise<Map<String, Buffer>> {
       for (const textureNative of rwTxd.textureDictionary.textureNatives) {
         const pngBuffer = await createPNGBufferFromRGBA(Buffer.from(textureNative.mipmaps[0]), textureNative.width, textureNative.height);
         if(pngBuffer == null || pngBuffer == undefined) throw new Error("PNG buffer from RGBA is empty. ");
-        texturesMap.set(textureNative.textureName, pngBuffer);
+        texturesMap.set(textureNative.textureName.toLowerCase(), pngBuffer);
       }
     } catch(e) {
       reject(e);
@@ -222,7 +222,7 @@ async convertSkinData(rwDff :RwDff) {
     
             if (rwMaterial.isTextured) {
               const textureName = rwMaterial.texture.textureName;
-              const pngBuffer :Buffer = this._texturesMap.get(textureName);
+              const pngBuffer :Buffer = this._texturesMap.get(textureName.toLowerCase());
               if (pngBuffer != undefined) {
                 const texture = this._doc.createTexture()
                 .setImage(pngBuffer)
