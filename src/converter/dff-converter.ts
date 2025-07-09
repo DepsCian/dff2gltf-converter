@@ -8,7 +8,7 @@ import { computeNormals } from '../utils/geometry-utils.js';
 import { createPNGBufferFromRGBA } from '../utils/image-utils.js';
 import { ModelType } from '../constants/model-types.js';
 import { DffConversionResult } from './dff-conversion-result.js';
-import { BONES_ORDER, PARENTS_ORDER } from '../constants/rw-const.js';
+import { BONES_ORDER_SA, PARENTS_ORDER_SA } from '../constants/rw-const.js';
 
 
 export class DffConverter {
@@ -83,79 +83,147 @@ async convertTextures() :Promise<Map<String, Buffer>> {
 
 async convertSkinData(rwDff :RwDff) {
   try {
+    const skin = this._doc.createSkin("Skin");
+    this._meshNode.setSkin(skin);
     const rwFrames = rwDff.frameList.frames;
-    const skin = this._doc.createSkin('Skin');
-    this._meshNode.setSkin(skin); 
-    let bones :Node[] = [];
-    let bonesTable :Bone[] = [];
-    rwDff.animNodes.unshift({boneId: -1 , bones: [], bonesCount: 0});
+    const bones: Node[] = [];
 
-    for (let i = 0; i < rwFrames.length; i++) {
-      let boneId = rwDff.animNodes[i].boneId;
-      bonesTable.push({
-        name: rwDff.dummies[i-1],
-        boneData: {
-          boneId: boneId, 
-          boneIndex: BONES_ORDER.indexOf(boneId) + 1,
-          flags: 0
-        },
-        frameData: {
-          parentFrame: PARENTS_ORDER[BONES_ORDER.indexOf(boneId)],
-          coordinatesOffset: rwFrames[i].coordinatesOffset,
-          rotationMatrix: rwFrames[i].rotationMatrix
+    // Adding bones to table
+    let bonesTable: Bone[] = [];
+    const order: number[] = [];
+    for (const animNode of rwDff.animNodes) {
+      if (animNode.bonesCount > 0) {
+        for (let i = 0; i < animNode.bones.length; i++) {
+          const bone = animNode.bones[i];
+          bonesTable.push({
+            name: rwDff.dummies[i],
+            boneData: {
+              boneId: rwDff.animNodes[i].boneId,
+              boneIndex: bone.boneIndex + 1,
+              flags: bone.flags,
+            },
+            frameData: {
+              parentFrame: rwFrames[i + 1].parentFrame,
+              coordinatesOffset: rwFrames[i + 1].coordinatesOffset,
+              rotationMatrix: rwFrames[i + 1].rotationMatrix,
+            },
+          });
+
+          order.push(bone.boneId);
         }
-      });
+        break;
+      }
     }
-    bonesTable.sort((a, b) => a.boneData.boneIndex > b.boneData.boneIndex ? 1 : -1);
 
+    //if(true) {  // if vice city
+   //   bonesTable.unshift(bonesTable.pop());
+    //  }
+
+    const priority: Record<number, number> = {};
+    order.forEach((id, index) => {
+      priority[id] = index;
+    });
+
+    bonesTable.sort((a, b) =>
+      priority[a.boneData.boneId] > priority[b.boneData.boneId] ? 1 : -1
+    );
+    const map: Map<number, number> = new Map();
+
+    bonesTable.forEach((bone, i) => {
+      map.set(bone.boneData.boneIndex, i + 1);
+      bone.boneData.boneIndex = i + 1;
+    });
+    bonesTable.forEach((bone) => {
+      bone.frameData.parentFrame = map.get(bone.frameData.parentFrame) ?? 0;
+    });
+
+    bonesTable.unshift({ name: undefined, boneData: { boneId: -1, boneIndex: 0, flags: 0 }, frameData: {parentFrame: undefined, coordinatesOffset: undefined,rotationMatrix: undefined}});
+    //console.log(priority);
+    console.log(`BONEINDX BONEID  PARENT_FRAME     NAME`);
+    bonesTable.forEach((bone) =>
+      console.log(
+        `${bone.boneData.boneIndex}\t${bone.boneData.boneId}\t${bone.frameData.parentFrame}\t\t${bone.name}`
+      )
+    );
+
+    // Adding bones to gltf buffer
     for (const rwBone of bonesTable) {
+      console.log(`Trying to add ${rwBone.name}`);
       const frame = rwBone.frameData;
-      const translationVector :vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
-      const rotationQuat :quat = await quatFromRwMatrix(frame.rotationMatrix);
-      quat.normalize(rotationQuat, rotationQuat);
-
-      if (frame.parentFrame == undefined) { 
+      if (frame.parentFrame == undefined) {
         bones.push(undefined);
         continue;
       }
+      const translationVector: vec3 = [
+        frame.coordinatesOffset.x,
+        frame.coordinatesOffset.y,
+        frame.coordinatesOffset.z,
+      ];
+      const rotationQuat: quat = await quatFromRwMatrix(frame.rotationMatrix);
+      quat.normalize(rotationQuat, rotationQuat);
 
-      const bone = this._doc.createNode(rwBone.name)
-            .setTranslation(translationVector)
-            .setRotation([rotationQuat[0], rotationQuat[1], rotationQuat[2], rotationQuat[3]])
-            .setScale([1, 1, 1]);
-
-      if (frame.parentFrame == 0) { 
-        skin.addJoint(bone);
-        this._scene.addChild(bone);
-        bones.push(bone);
-        continue;
-      }
+      const bone = this._doc
+        .createNode(rwBone.name)
+        .setTranslation(translationVector)
+        .setRotation([
+          rotationQuat[0],
+          rotationQuat[1],
+          rotationQuat[2],
+          rotationQuat[3],
+        ])
+        .setScale([1, 1, 1]);
 
       skin.addJoint(bone);
       bones.push(bone);
-      bones[frame.parentFrame].addChild(bone);
-   }
 
-   // IBM
-    let inverseBindMatrices: number[] = [];
-    const rwInverseBindMatrices = rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
-    for (let ibm of rwInverseBindMatrices) {
-      inverseBindMatrices.push(...[
-        ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t, 
-        ibm.up.x,    ibm.up.y,    ibm.up.z,    ibm.up.t, 
-        ibm.at.x,    ibm.at.y,    ibm.at.z,    ibm.at.t, 
-        ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t] );
+      if (frame.parentFrame == 0) {
+        this._scene.addChild(bone);
+        continue;
+      } else {
+        bones[frame.parentFrame].addChild(bone);
+      }
     }
 
-    const correctedInverseBindMatrices :number[] = [];
-    for (let i = 0; i < rwInverseBindMatrices.length; i++) {
-      const matrix :mat4 = new Float32Array(inverseBindMatrices.slice(i * 16, (i + 1) * 16));
-      correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
-   }
-    const inverseBindMatricesAccessor = this._doc.createAccessor().setType('MAT4').setArray(new Float32Array(correctedInverseBindMatrices));
-    skin.setInverseBindMatrices(inverseBindMatricesAccessor);
+    // IBM
+    let inverseBindMatrices: number[] = [];
+    const rwInverseBindMatrices =
+      rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
+    for (let ibm of rwInverseBindMatrices) {
+      inverseBindMatrices.push(
+        ...[
+          ibm.right.x,
+          ibm.right.y,
+          ibm.right.z,
+          ibm.right.t,
+          ibm.up.x,
+          ibm.up.y,
+          ibm.up.z,
+          ibm.up.t,
+          ibm.at.x,
+          ibm.at.y,
+          ibm.at.z,
+          ibm.at.t,
+          ibm.transform.x,
+          ibm.transform.y,
+          ibm.transform.z,
+          ibm.transform.t,
+        ]
+      );
+    }
 
-  } catch(e) {
+    const correctedInverseBindMatrices: number[] = [];
+    for (let i = 0; i < rwInverseBindMatrices.length; i++) {
+      const matrix: mat4 = new Float32Array(
+        inverseBindMatrices.slice(i * 16, (i + 1) * 16)
+      );
+      correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
+    }
+    const inverseBindMatricesAccessor = this._doc
+      .createAccessor()
+      .setType("MAT4")
+      .setArray(new Float32Array(correctedInverseBindMatrices));
+    skin.setInverseBindMatrices(inverseBindMatricesAccessor);
+  } catch (e) {
     console.error(`${e} Cannot create skin data.`);
   }
 }
