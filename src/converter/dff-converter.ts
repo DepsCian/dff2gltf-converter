@@ -27,7 +27,6 @@ export class DffConverter {
   }
 
   async convertDffToGltf(): Promise<DffConversionResult> {
-    return new Promise(async (resolve, reject) => {
       try {
         this._doc = new Document();
         this._doc.createBuffer();
@@ -35,186 +34,31 @@ export class DffConverter {
         this._meshNode = this._doc.createNode("Mesh");
         this._texturesMap = await this.convertTextures();
 
-        if (this.modelType == ModelType.CAR)
+        if (this.modelType == ModelType.CAR)   // to validator
           throw new Error("Car converter is not implemented right now.");
         const rwDff = new DffParser(this.dff).parse();
 
         for (const rwGeometry of rwDff.geometryList.geometries) {
-          await this.convertGeometry(rwGeometry);
+          this.convertGeometry(rwGeometry);
         }
-        if (this.modelType == ModelType.SKIN) await this.convertSkinData(rwDff);
+        if (this.modelType == ModelType.SKIN) {
+          this.convertSkinData(rwDff);
+        }
+        
+        // POST-PROCESSING
+        await this._doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
+        await this._doc.transform(weld());
+        await this._doc.transform(textureCompress({ targetFormat: 'jpeg', resize: [1024, 1024] }));
+
+        return new DffConversionResult(this._doc);
+
       } catch (e) {
-        e = `${e}. Cannot create geometry mesh.`;
-        reject(e);
+        console.error(`Error converting DFF model: ${e}`);
+        throw e;
       }
-
-      // POST-PROCESSING
-      await this._doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
-      await this._doc.transform(weld());
-      await this._doc.transform(textureCompress({ targetFormat: 'jpeg', resize: [1024, 1024] }));
-
-      resolve(new DffConversionResult(this._doc));
-    });
   }
 
-  async convertTextures(): Promise<Map<String, Buffer>> {
-    return new Promise(async (resolve, reject) => {
-      const texturesMap = new Map();
-      try {
-        const rwTxd: RwTxd = new TxdParser(this.txd).parse();
-
-        if (rwTxd.textureDictionary.textureCount < 1) {
-          throw new Error("Textures not found.");
-        }
-        for (const textureNative of rwTxd.textureDictionary.textureNatives) {
-          const pngBuffer = await createPNGBufferFromRGBA(
-            Buffer.from(textureNative.mipmaps[0]),
-            textureNative.width,
-            textureNative.height
-          );
-          if (pngBuffer == null || pngBuffer == undefined)
-            throw new Error("PNG buffer from RGBA is empty. ");
-          texturesMap.set(textureNative.textureName.toLowerCase(), pngBuffer);
-        }
-      } catch (e) {
-        reject(e);
-      }
-
-      resolve(texturesMap);
-    });
-  }
-
-  async convertSkinData(rwDff: RwDff) {
-    try {
-      const skin = this._doc.createSkin("Skin");
-      this._meshNode.setSkin(skin);
-      const rwFrames = rwDff.frameList.frames;
-      const bones: Node[] = [];
-      console.log("version " + rwDff.versionNumber);
-
-      // Adding bones to table
-      let bonesTable: Bone[] = [];
-      const order: number[] = [];
-      for (const animNode of rwDff.animNodes) {
-        if (animNode.bonesCount > 0) {
-          for (let i = 0; i < animNode.bones.length; i++) {
-            const bone = animNode.bones[i];
-            bonesTable.push({
-              name: rwDff.dummies[rwDff.versionNumber == 221187 ? i : i + 1], // +1 for VC
-              boneData: {
-                boneId: rwDff.animNodes[rwDff.versionNumber == 221187 ? i : i + 1].boneId, // +1 for VC
-                boneIndex: bone.boneIndex + 1,
-                flags: bone.flags,
-              },
-              frameData: {
-                parentFrame: rwFrames[i + 1].parentFrame,
-                coordinatesOffset: rwFrames[i + 1].coordinatesOffset,
-                rotationMatrix: rwFrames[i + 1].rotationMatrix,
-              },
-            });
-
-            order.push(bone.boneId);
-          }
-          break;
-        }
-      }
-
-      const priority: Record<number, number> = {};
-      order.forEach((id, index) => {
-        priority[id] = index;
-      });
-
-      bonesTable.sort((a, b) =>
-        priority[a.boneData.boneId] > priority[b.boneData.boneId] ? 1 : -1
-      );
-      const map: Map<number, number> = new Map();
-
-      bonesTable.forEach((bone, i) => {
-        map.set(bone.boneData.boneIndex, i + 1);
-        bone.boneData.boneIndex = i + 1;
-      });
-      bonesTable.forEach((bone) => {
-        bone.frameData.parentFrame = map.get(bone.frameData.parentFrame) ?? 0;
-      });
-
-      bonesTable.unshift({
-        name: undefined,
-        boneData: { boneId: -1, boneIndex: 0, flags: 0 },
-        frameData: {
-          parentFrame: undefined,
-          coordinatesOffset: undefined,
-          rotationMatrix: undefined,
-        },
-      });
-
-      // Add bones to gltf buffer
-      for (const rwBone of bonesTable) {
-        const frame = rwBone.frameData;
-        if (frame.parentFrame === undefined) {
-          bones.push(undefined);
-          continue;
-        }
-        const translationVector: vec3 = [
-          frame.coordinatesOffset.x,
-          frame.coordinatesOffset.y,
-          frame.coordinatesOffset.z,
-        ];
-        const rotationQuat: quat = await quatFromRwMatrix(frame.rotationMatrix);
-        quat.normalize(rotationQuat, rotationQuat);
-
-        const bone = this._doc
-          .createNode(rwBone.name)
-          .setTranslation(translationVector)
-          .setRotation([
-            rotationQuat[0],
-            rotationQuat[1],
-            rotationQuat[2],
-            rotationQuat[3],
-          ])
-          .setScale([1, 1, 1]);
-
-        skin.addJoint(bone);
-        bones.push(bone);
-
-        if (frame.parentFrame == 0) {
-          this._scene.addChild(bone);
-          continue;
-        } else {
-          bones[frame.parentFrame].addChild(bone);
-        }
-      }
-
-      // IBM
-      let inverseBindMatrices: number[] = [];
-      const rwInverseBindMatrices =
-        rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
-      for (let ibm of rwInverseBindMatrices) {
-        inverseBindMatrices.push(...[ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t,
-                                     ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t,
-                                     ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t,
-                                     ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t]);
-      }
-
-      const correctedInverseBindMatrices: number[] = [];
-      for (let i = 0; i < rwInverseBindMatrices.length; i++) {
-        const matrix: mat4 = new Float32Array(
-          inverseBindMatrices.slice(i * 16, (i + 1) * 16)
-        );
-        correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
-      }
-
-      const inverseBindMatricesAccessor = this._doc
-        .createAccessor()
-        .setType("MAT4")
-        .setName("InverseBindMatrices")
-        .setArray(new Float32Array(correctedInverseBindMatrices));
-      skin.setInverseBindMatrices(inverseBindMatricesAccessor);
-    } catch (e) {
-      console.error(`${e} Cannot create skin data.`);
-    }
-  }
-
-  async convertGeometry(rwGeometry: RwGeometry) {
+  convertGeometry(rwGeometry: RwGeometry) :void {
     const mesh = this._doc.createMesh();
     const rwTextureInfo = rwGeometry.textureMappingInformation;
     const rwUvsArray: RwTextureCoordinate[] =
@@ -266,7 +110,7 @@ export class DffConverter {
     const indices: Uint32Array = new Uint32Array(sharedIndicesArray);
 
     if (normals == undefined || rwBinMesh.meshCount > 1) {
-      normals = await computeNormals(vertices, indices);
+      normals = computeNormals(vertices, indices);
     }
 
     const normalsAccessor = this._doc
@@ -348,5 +192,161 @@ export class DffConverter {
 
     this._meshNode.setMesh(mesh);
     this._scene.addChild(this._meshNode);
+  }
+
+  async convertTextures(): Promise<Map<String, Buffer>> {
+    const texturesMap = new Map();
+      try {
+        const texturesMap = new Map();
+        const rwTxd: RwTxd = new TxdParser(this.txd).parse();
+
+        if (rwTxd.textureDictionary.textureCount < 1) {
+          throw new Error("Textures not found.");
+        }
+        for (const texNative of rwTxd.textureDictionary.textureNatives) {
+          const pngBuffer = await createPNGBufferFromRGBA(Buffer.from(texNative.mipmaps[0]), texNative.width, texNative.height);
+
+          if (pngBuffer == null || pngBuffer == undefined) {
+            throw new Error("PNG buffer is empty.");
+          }
+          texturesMap.set(texNative.textureName.toLowerCase(), pngBuffer);
+        }
+
+        return texturesMap;
+
+      } catch (e) {
+        console.error(`Error converting textures: ${e}`);
+        throw e;
+      }
+  }
+
+  convertSkinData(rwDff: RwDff) {
+    try {
+      const skin = this._doc.createSkin("Skin");
+      this._meshNode.setSkin(skin);
+      const rwFrames = rwDff.frameList.frames;
+      const bones: Node[] = [];
+      console.log("version " + rwDff.versionNumber);
+
+      // Adding bones to table
+      let bonesTable: Bone[] = [];
+      const order: number[] = [];
+      for (const animNode of rwDff.animNodes) {
+        if (animNode.bonesCount > 0) {
+          for (let i = 0; i < animNode.bones.length; i++) {
+            const bone = animNode.bones[i];
+            bonesTable.push({
+              name: rwDff.dummies[rwDff.versionNumber == 221187 ? i : i + 1], // +1 for VC
+              boneData: {
+                boneId: rwDff.animNodes[rwDff.versionNumber == 221187 ? i : i + 1].boneId, // +1 for VC
+                boneIndex: bone.boneIndex + 1,
+                flags: bone.flags,
+              },
+              frameData: {
+                parentFrame: rwFrames[i + 1].parentFrame,
+                coordinatesOffset: rwFrames[i + 1].coordinatesOffset,
+                rotationMatrix: rwFrames[i + 1].rotationMatrix,
+              },
+            });
+
+            order.push(bone.boneId);
+          }
+          break;
+        }
+      }
+
+      const priority: Record<number, number> = {};
+      order.forEach((id, index) => {
+        priority[id] = index;
+      });
+
+      bonesTable.sort((a, b) =>
+        priority[a.boneData.boneId] > priority[b.boneData.boneId] ? 1 : -1
+      );
+      const map: Map<number, number> = new Map();
+
+      bonesTable.forEach((bone, i) => {
+        map.set(bone.boneData.boneIndex, i + 1);
+        bone.boneData.boneIndex = i + 1;
+      });
+      bonesTable.forEach((bone) => {
+        bone.frameData.parentFrame = map.get(bone.frameData.parentFrame) ?? 0;
+      });
+
+      bonesTable.unshift({
+        name: undefined,
+        boneData: { boneId: -1, boneIndex: 0, flags: 0 },
+        frameData: {
+          parentFrame: undefined,
+          coordinatesOffset: undefined,
+          rotationMatrix: undefined,
+        },
+      });
+
+      // Add bones to gltf buffer
+      for (const rwBone of bonesTable) {
+        const frame = rwBone.frameData;
+        if (frame.parentFrame === undefined) {
+          bones.push(undefined);
+          continue;
+        }
+        const translationVector: vec3 = [
+          frame.coordinatesOffset.x,
+          frame.coordinatesOffset.y,
+          frame.coordinatesOffset.z,
+        ];
+        const rotationQuat: quat = quatFromRwMatrix(frame.rotationMatrix);
+        quat.normalize(rotationQuat, rotationQuat);
+
+        const bone = this._doc
+          .createNode(rwBone.name)
+          .setTranslation(translationVector)
+          .setRotation([
+            rotationQuat[0],
+            rotationQuat[1],
+            rotationQuat[2],
+            rotationQuat[3],
+          ])
+          .setScale([1, 1, 1]);
+
+        skin.addJoint(bone);
+        bones.push(bone);
+
+        if (frame.parentFrame == 0) {
+          this._scene.addChild(bone);
+          continue;
+        } else {
+          bones[frame.parentFrame].addChild(bone);
+        }
+      }
+
+      // IBM
+      let inverseBindMatrices: number[] = [];
+      const rwInverseBindMatrices =
+        rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
+      for (let ibm of rwInverseBindMatrices) {
+        inverseBindMatrices.push(...[ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t,
+                                     ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t,
+                                     ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t,
+                                     ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t]);
+      }
+
+      const correctedInverseBindMatrices: number[] = [];
+      for (let i = 0; i < rwInverseBindMatrices.length; i++) {
+        const matrix: mat4 = new Float32Array(
+          inverseBindMatrices.slice(i * 16, (i + 1) * 16)
+        );
+        correctedInverseBindMatrices.push(...normalizeMatrix(matrix));
+      }
+
+      const inverseBindMatricesAccessor = this._doc
+        .createAccessor()
+        .setType("MAT4")
+        .setName("InverseBindMatrices")
+        .setArray(new Float32Array(correctedInverseBindMatrices));
+      skin.setInverseBindMatrices(inverseBindMatricesAccessor);
+    } catch (e) {
+      console.error(`${e} Cannot create skin data.`);
+    }
   }
 }

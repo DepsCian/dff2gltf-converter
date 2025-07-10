@@ -1,13 +1,12 @@
-import { vec3 } from "gl-matrix";
+import { vec3 } from 'gl-matrix';
 
-
-export function computeNormals(positions :Float32Array, indices :Uint32Array) :Float32Array {
-  const vertexCount :number = positions.length / 3;
-  const normals :Float32Array = new Float32Array(positions.length);
+export function computeNormals(positions: Float32Array, indices: Uint32Array): Float32Array {
+  const vertexCount: number = positions.length / 3;
+  const normals: Float32Array = new Float32Array(positions.length);
   const vertexToTriangles: Map<number, number[][]> = new Map();
 
   for (let i = 0; i < indices.length; i += 3) {
-    const triangleIndices :number[] = [indices[i], indices[i + 1], indices[i + 2]];
+    const triangleIndices: number[] = [ indices[i], indices[i + 1], indices[i + 2] ];
 
     if (triangleIndices[0] === triangleIndices[1] || triangleIndices[1] === triangleIndices[2] || triangleIndices[0] === triangleIndices[2]) {
       continue;
