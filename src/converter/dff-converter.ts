@@ -1,4 +1,5 @@
 import { Document, Primitive, Node, Scene, PropertyType } from '@gltf-transform/core';
+import { dedup, textureCompress, weld } from '@gltf-transform/functions';
 import { DffParser, RwBinMesh, RwDff, RwGeometry, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { Bone, normalizeJoints, normalizeWeights } from '../utils/skin-utils.js';
@@ -7,8 +8,8 @@ import { computeNormals } from '../utils/geometry-utils.js';
 import { createPNGBufferFromRGBA } from '../utils/image-utils.js';
 import { ModelType } from '../constants/model-types.js';
 import { DffConversionResult } from './dff-conversion-result.js';
-import { dedup, textureCompress, weld } from '@gltf-transform/functions';
-
+import { DffValidator } from './dff-validator.js';
+import { RwVerion } from '../constants/rw-versions.js';
 
 export class DffConverter {
   dff: Buffer;
@@ -33,10 +34,9 @@ export class DffConverter {
         this._scene = this._doc.createScene();
         this._meshNode = this._doc.createNode("Mesh");
         this._texturesMap = await this.convertTextures();
-
-        if (this.modelType == ModelType.CAR)   // to validator
-          throw new Error("Car converter is not implemented right now.");
         const rwDff = new DffParser(this.dff).parse();
+
+        DffValidator.validate(this.modelType, rwDff.versionNumber);
 
         for (const rwGeometry of rwDff.geometryList.geometries) {
           this.convertGeometry(rwGeometry);
@@ -48,12 +48,12 @@ export class DffConverter {
         // POST-PROCESSING
         await this._doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
         await this._doc.transform(weld());
-        await this._doc.transform(textureCompress({ targetFormat: 'jpeg', resize: [1024, 1024] }));
+        await this._doc.transform(textureCompress({ targetFormat: 'png', resize: [1024, 1024] }));
 
         return new DffConversionResult(this._doc);
 
       } catch (e) {
-        console.error(`Error converting DFF model: ${e}`);
+        console.error(`${e}. DFF conversion aborted.`);
         throw e;
       }
   }
@@ -226,7 +226,6 @@ export class DffConverter {
       this._meshNode.setSkin(skin);
       const rwFrames = rwDff.frameList.frames;
       const bones: Node[] = [];
-      console.log("version " + rwDff.versionNumber);
 
       // Adding bones to table
       let bonesTable: Bone[] = [];
@@ -236,9 +235,9 @@ export class DffConverter {
           for (let i = 0; i < animNode.bones.length; i++) {
             const bone = animNode.bones[i];
             bonesTable.push({
-              name: rwDff.dummies[rwDff.versionNumber == 221187 ? i : i + 1], // +1 for VC
+              name: rwDff.dummies[rwDff.versionNumber == RwVerion.SA ? i : i + 1], // +1 for VC
               boneData: {
-                boneId: rwDff.animNodes[rwDff.versionNumber == 221187 ? i : i + 1].boneId, // +1 for VC
+                boneId: rwDff.animNodes[rwDff.versionNumber == RwVerion.SA ? i : i + 1].boneId, // +1 for VC
                 boneIndex: bone.boneIndex + 1,
                 flags: bone.flags,
               },
@@ -347,6 +346,7 @@ export class DffConverter {
       skin.setInverseBindMatrices(inverseBindMatricesAccessor);
     } catch (e) {
       console.error(`${e} Cannot create skin data.`);
+      throw e;
     }
   }
 }
