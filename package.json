@@ -25,7 +25,7 @@
   "author": "AlterSDB",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-   "type": "module",
+  "type": "module",
   "scripts": {
     "start": "tsc && node ./dist/test.js",
     "build": "tsc"

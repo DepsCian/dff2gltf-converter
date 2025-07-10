@@ -1,6 +1,5 @@
-import { Document, Primitive, PropertyType, Node, Scene } from '@gltf-transform/core';
+import { Document, Primitive, Node, Scene, PropertyType } from '@gltf-transform/core';
 import { DffParser, RwBinMesh, RwDff, RwGeometry, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
-import { dedup } from '@gltf-transform/functions';
 import { mat4, quat, vec3 } from 'gl-matrix';
 import { Bone, normalizeJoints, normalizeWeights } from '../utils/skin-utils.js';
 import { normalizeMatrix, quatFromRwMatrix } from '../utils/matrix-utils.js';
@@ -8,6 +7,7 @@ import { computeNormals } from '../utils/geometry-utils.js';
 import { createPNGBufferFromRGBA } from '../utils/image-utils.js';
 import { ModelType } from '../constants/model-types.js';
 import { DffConversionResult } from './dff-conversion-result.js';
+import { dedup, textureCompress, weld } from '@gltf-transform/functions';
 
 
 export class DffConverter {
@@ -28,13 +28,13 @@ export class DffConverter {
 
   async convertDffToGltf(): Promise<DffConversionResult> {
     return new Promise(async (resolve, reject) => {
-      this._doc = new Document();
-      this._doc.createBuffer();
-      this._scene = this._doc.createScene();
-      this._meshNode = this._doc.createNode("Mesh");
-      this._texturesMap = await this.convertTextures();
-
       try {
+        this._doc = new Document();
+        this._doc.createBuffer();
+        this._scene = this._doc.createScene();
+        this._meshNode = this._doc.createNode("Mesh");
+        this._texturesMap = await this.convertTextures();
+
         if (this.modelType == ModelType.CAR)
           throw new Error("Car converter is not implemented right now.");
         const rwDff = new DffParser(this.dff).parse();
@@ -49,9 +49,9 @@ export class DffConverter {
       }
 
       // POST-PROCESSING
-      await this._doc.transform(
-        dedup({ propertyTypes: [PropertyType.ACCESSOR] })
-      );
+      await this._doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE, PropertyType.MATERIAL] }));
+      await this._doc.transform(weld());
+      await this._doc.transform(textureCompress({ targetFormat: 'jpeg', resize: [1024, 1024] }));
 
       resolve(new DffConversionResult(this._doc));
     });
