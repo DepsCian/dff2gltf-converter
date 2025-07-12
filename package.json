@@ -1,7 +1,7 @@
 {
   "name": "dff2gltf-converter",
-  "version": "0.9.2",
-  "description": "3D model converter from .dff/.txd to glTF and glB",
+  "version": "0.9.3",
+  "description": "3D model converter from .dff/.txd to glTF and glb",
   "homepage": "https://github.com/AlterSDB/dff2glb-converter#readme",
   "bugs": {
     "url": "https://github.com/AlterSDB/dff2glb-converter/issues"
@@ -15,10 +15,10 @@
     "opengl",
     "renderware",
     "gta",
-    ".dff",
-    ".txd",
-    ".gltf",
-    ".glb",
+    "dff",
+    "txd",
+    "gltf",
+    "glb",
     "3d",
     "converter"
   ],
