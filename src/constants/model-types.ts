@@ -1,5 +1,5 @@
 export enum ModelType {
-    OBJECT = "object",
-    SKIN = "skin",
-    CAR = "car"
-  }
+  OBJECT = 'object',
+  SKIN = 'skin',
+  CAR = 'car',
+}

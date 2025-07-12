@@ -15,8 +15,8 @@ This module was made with [glTF-Transform](https://github.com/donmccurdy/glTF-Tr
 
   const dffConverter = new DffConverter(dffBuffer, txdBuffer, ModelType.OBJECT); // initialize DffConverter with params
 
-  dffConverter.convertDffToGltf().then((gltf) => gltf.exportAs(`output.gltf`));  // convert and export your model in .gltf
-  dffConverter.convertDffToGltf().then((gltf) => gltf.exportAs(`output.glb`)); // or you can save your result in .glb
+  const result = await dffConverter.convertDffToGltf(); 
+  result.exportAs(`./output/result.glb`); // convert and export your model in .gltf or .glb
 ```
 You can choose one of three model types for model conversion:
 ```js
@@ -24,7 +24,9 @@ You can choose one of three model types for model conversion:
   ModelType.CAR
   ModelType.OBJECT
 ```
-**Note:** Selecting the wrong type may result in unexpected output after conversion, so be sure to specify the type correctly.
+**Notes:** 
+* Selecting the wrong type may result in unexpected output after conversion, so be sure to specify the type correctly.
+* All Cars and skins for 3/VC are currently unavailable for right conversion right now.
 ### CLI (Not implemented):
 ```sh
 dff2gltf [dffPath] [txdPath] [ModelType (-s, -m, -c)] [outputPath]

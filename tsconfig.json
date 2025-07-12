@@ -5,6 +5,7 @@
     "rootDir": "./src",
     "moduleResolution": "nodenext",
     "declaration": true,
+    "declarationDir": "./dist/types",
     "outDir": "./dist/",
     "removeComments": true,
     "esModuleInterop": true,

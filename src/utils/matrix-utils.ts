@@ -10,12 +10,15 @@ export function normalizeMatrix (matrix :mat4) :mat4 {
   mat4.getScaling(scale, matrix);
   mat4.getTranslation(translation, matrix);
 
-  const normalizedMatrix = mat4.fromRotationTranslationScale(
-    mat4.create(),
-    rotation,
-    translation,
-    [1, 1, 1]
-  );
+  let normalizedMatrix = mat4.fromRotationTranslationScale(mat4.create(), rotation, translation, [1, 1, 1]);
+
+    // Remove infinite values
+    normalizedMatrix = mat4.fromValues(...normalizedMatrix.map((v) => isFinite(v) ? v : -1) as [ 
+      number, number, number, number, 
+      number, number, number, number, 
+      number, number, number, number, 
+      number, number, number, number
+    ]);
 
   return normalizedMatrix;
 }
