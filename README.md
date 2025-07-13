@@ -1,6 +1,6 @@
 # DFF2glTF Converter
 [![NPM Version](https://img.shields.io/npm/v/dff2gltf-converter?style=flat&color=orange)](https://www.npmjs.com/package/dff2gltf-converter)
-[![License](https://img.shields.io/github/license/AlterSDB/dff2gltf-converter?color=green)](https://github.com/AlterSDB/dff2gltf-converter/blob/main/LICENSE.md)  
+[![License](https://img.shields.io/github/license/AlterSDB/dff2gltf-converter?color=green)](https://github.com/AlterSDB/dff2gltf-converter/blob/main/LICENSE.md)
 [![CodeFactor](https://www.codefactor.io/repository/github/altersdb/dff2gltf-converter/badge/main)](https://www.codefactor.io/repository/github/altersdb/dff2gltf-converter/overview/main)  
 This module will help you convert 3D models from RenderWare format (.dff, .txd) to the modern web-compatible glTF/glB format. 
 The tool is useful for developers working with retro GTA games (GTA III, GTA San Andreas, etc.) who want to use models in modern web applications or engines.

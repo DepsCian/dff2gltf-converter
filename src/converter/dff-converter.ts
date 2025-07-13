@@ -21,7 +21,7 @@ export class DffConverter {
   private _doc: Document;
   private _scene: Scene;
   private _meshNode: Node;
-  private _texturesMap: Map<String, Buffer>;
+  private _texturesMap: Map<string, Buffer>;
 
   constructor(dff: Buffer, txd: Buffer, modelType: ModelType) {
     this.dff = dff;
@@ -116,7 +116,7 @@ export class DffConverter {
     return { posAccessor, uvsAccessor, normAccessor };
   }
 
-  private async convertTextures(): Promise<Map<String, Buffer>> {
+  private async convertTextures(): Promise<Map<string, Buffer>> {
     try {
       const texturesMap = new Map();
       const rwTxd: RwTxd = new TxdParser(this.txd).parse();
@@ -313,12 +313,11 @@ export class DffConverter {
       let inverseBindMatrices: number[] = [];
       const rwInverseBindMatrices = rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
       for (let ibm of rwInverseBindMatrices) {
-        inverseBindMatrices.push(...[
+        inverseBindMatrices.push(
           ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t,
           ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t,
           ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t,
-          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t,
-          ]
+          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t
         );
       }
 
