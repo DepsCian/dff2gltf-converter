@@ -1,7 +1,9 @@
 testassets/
 output/
 tests/
+src/
 node-modules/
 dist/test.js
 dist/test.d.ts
 .prettierrc
+jest.config.js

@@ -3,14 +3,16 @@ import { dedup, textureCompress, weld } from '@gltf-transform/functions';
 import { DffParser, RwBinMesh, RwDff, RwGeometry, RwMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { mat4, quat, vec3 } from 'gl-matrix';
 
-import { Bone, normalizeJoints, normalizeWeights } from '../utils/skin-utils.js';
-import { normalizeMatrix, quatFromRwMatrix } from '../utils/matrix-utils.js';
-import { computeNormals } from '../utils/geometry-utils.js';
-import { createPNGBufferFromRGBA } from '../utils/image-utils.js';
-import { ModelType } from '../constants/model-types.js';
-import { DffConversionResult } from './dff-conversion-result.js';
-import { DffValidator } from './dff-validator.js';
-import { RwVerion } from '../constants/rw-versions.js';
+import { ModelType } from '../constants/model-types';
+import { RwVersion } from '../constants/rw-versions';
+import { computeNormals } from '../utils/geometry-utils';
+import { createPNGBufferFromRGBA } from '../utils/image-utils';
+import { quatFromRwMatrix, normalizeMatrix } from '../utils/matrix-utils';
+import { normalizeWeights, normalizeJoints, Bone } from '../utils/skin-utils';
+import { DffConversionResult } from './dff-conversion-result';
+import { DffValidator } from './dff-validator';
+
+
 
 
 export class DffConverter {
@@ -36,7 +38,8 @@ export class DffConverter {
       this._scene = this._doc.createScene();
       this._meshNode = this._doc.createNode('Mesh');
       this._texturesMap = await this.convertTextures();
-      const rwDff = new DffParser(this.dff).parse();
+      const dffParser = new DffParser(this.dff);
+      const rwDff = await dffParser.parse();
 
       DffValidator.validate(this.modelType, rwDff.versionNumber);
 
@@ -230,9 +233,9 @@ export class DffConverter {
           for (let i = 0; i < animNode.bones.length; i++) {
             const bone = animNode.bones[i];
             bonesTable.push({
-              name: rwDff.dummies[rwDff.versionNumber == RwVerion.SA ? i : i + 1], // +1 for VC
+              name: rwDff.dummies[rwDff.versionNumber == RwVersion.SA ? i : i + 1], // +1 for VC
               boneData: {
-                boneId: rwDff.animNodes[rwDff.versionNumber == RwVerion.SA ? i : i + 1].boneId, // +1 for VC
+                boneId: rwDff.animNodes[rwDff.versionNumber == RwVersion.SA ? i : i + 1].boneId, // +1 for VC
                 boneIndex: bone.boneIndex + 1,
                 flags: bone.flags,
               },

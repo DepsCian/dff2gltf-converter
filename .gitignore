@@ -4,4 +4,3 @@ dist/
 output/
 src/test.ts
 *.js
-.prettierrc

@@ -28,7 +28,8 @@
   "type": "module",
   "scripts": {
     "start": "tsc && node ./dist/test.js",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "jest"
   },
   "bin": {
     "dff2gltf": "dist/cli.js"
@@ -42,7 +43,10 @@
     "rw-parser": "^1.5.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.15.17",
-    "@types/yargs": "^17.0.33"
+    "@types/yargs": "^17.0.33",
+    "jest": "^30.0.4",
+    "ts-jest": "^29.4.0"
   }
 }
