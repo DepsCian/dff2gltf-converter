@@ -4,3 +4,4 @@ dist/
 output/
 src/test.ts
 *.js
+tests/convert.test.ts

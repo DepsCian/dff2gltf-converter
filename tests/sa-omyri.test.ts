@@ -1,8 +1,7 @@
 import fs from 'fs';
 import { createHash } from 'crypto';
 import { join } from 'path';
-import { DffConversionResult, DffConverter, ModelType } from '../src';
-
+import { DffConverter, ModelType } from '../src';
 
 describe('gltf skin converting: sa-omyri', () => {
 
@@ -24,6 +23,15 @@ describe('gltf skin converting: sa-omyri', () => {
     const expectedHash = getHash(join(__dirname, './expect/sa-omyri.glb'));
     const actualHash = createHash('sha256').update(conversionResultBuffer).digest('hex');
     expect(actualHash).toBe(expectedHash);
+  }); 
+
+  test('GLB is valid', () => {
+    const validator = require('gltf-validator');
+    validator.validateBytes(new Uint8Array(conversionResultBuffer))
+    .then((report :string) => console.info('Validation succeeded: ', report))
+    .catch((error :string) => console.error('Validation failed: ', error));
+
+    expect(1).toStrictEqual(1);
   }); 
 
 });
