@@ -18,7 +18,7 @@ interface ValidationReport {
   info: {
     version: string,
     generator: string,
-    resources: Object[],
+    resources: object[],
     animationCount: number,
     materialCount: number,
     hasMorphTargets: boolean,
