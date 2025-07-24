@@ -14,4 +14,9 @@ export class DffConversionResult {
 
     new NodeIO().write(exportPath, this.gltfBuffer);
   }
+
+  async getBuffer(): Promise<Buffer> {
+    const byteBuffer :Uint8Array = await new NodeIO().writeBinary(this.gltfBuffer);
+    return Buffer.from(byteBuffer);
+  }
 }

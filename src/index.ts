@@ -1,3 +1,3 @@
-export { ModelType } from './constants/model-types.js';
-export { DffConversionResult } from './converter/dff-conversion-result.js';
-export { DffConverter } from './converter/dff-converter.js';
+export { DffConverter } from './converter/dff-converter';
+export { DffConversionResult } from './converter/dff-conversion-result';
+export { ModelType } from './constants/model-types';

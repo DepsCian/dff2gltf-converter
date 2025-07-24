@@ -3,14 +3,14 @@ import { dedup, textureCompress, weld } from '@gltf-transform/functions';
 import { DffParser, RwBinMesh, RwDff, RwGeometry, RwMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
 import { mat4, quat, vec3 } from 'gl-matrix';
 
-import { Bone, normalizeJoints, normalizeWeights } from '../utils/skin-utils.js';
-import { normalizeMatrix, quatFromRwMatrix } from '../utils/matrix-utils.js';
-import { computeNormals } from '../utils/geometry-utils.js';
-import { createPNGBufferFromRGBA } from '../utils/image-utils.js';
-import { ModelType } from '../constants/model-types.js';
-import { DffConversionResult } from './dff-conversion-result.js';
-import { DffValidator } from './dff-validator.js';
-import { RwVerion } from '../constants/rw-versions.js';
+import { ModelType } from '../constants/model-types';
+import { RwVersion } from '../constants/rw-versions';
+import { computeNormals } from '../utils/geometry-utils';
+import { createPNGBufferFromRGBA } from '../utils/image-utils';
+import { quatFromRwMatrix, normalizeMatrix, defaultObjectRotationQuat, defaultSkinRotationQuat } from '../utils/matrix-utils';
+import { normalizeWeights, normalizeJoints, Bone } from '../utils/skin-utils';
+import { DffConversionResult } from './dff-conversion-result';
+import { DffValidator } from './dff-validator';
 
 
 export class DffConverter {
@@ -21,7 +21,7 @@ export class DffConverter {
   private _doc: Document;
   private _scene: Scene;
   private _meshNode: Node;
-  private _texturesMap: Map<String, Buffer>;
+  private _texturesMap: Map<string, Buffer>;
 
   constructor(dff: Buffer, txd: Buffer, modelType: ModelType) {
     this.dff = dff;
@@ -36,7 +36,8 @@ export class DffConverter {
       this._scene = this._doc.createScene();
       this._meshNode = this._doc.createNode('Mesh');
       this._texturesMap = await this.convertTextures();
-      const rwDff = new DffParser(this.dff).parse();
+      const dffParser = new DffParser(this.dff);
+      const rwDff = await dffParser.parse();
 
       DffValidator.validate(this.modelType, rwDff.versionNumber);
 
@@ -48,6 +49,10 @@ export class DffConverter {
       }
       if (this.modelType == ModelType.CAR) {
         this.convertCarData(rwDff);
+      }
+      if (this.modelType == ModelType.OBJECT) {
+      this.correctModelRotation();
+      console.log("XXXX");
       }
 
       // POST-PROCESSING
@@ -116,7 +121,7 @@ export class DffConverter {
     return { posAccessor, uvsAccessor, normAccessor };
   }
 
-  private async convertTextures(): Promise<Map<String, Buffer>> {
+  private async convertTextures(): Promise<Map<string, Buffer>> {
     try {
       const texturesMap = new Map();
       const rwTxd: RwTxd = new TxdParser(this.txd).parse();
@@ -230,9 +235,9 @@ export class DffConverter {
           for (let i = 0; i < animNode.bones.length; i++) {
             const bone = animNode.bones[i];
             bonesTable.push({
-              name: rwDff.dummies[rwDff.versionNumber == RwVerion.SA ? i : i + 1], // +1 for VC
+              name: rwDff.dummies[rwDff.versionNumber == RwVersion.SA ? i : i + 1], // +1 for VC
               boneData: {
-                boneId: rwDff.animNodes[rwDff.versionNumber == RwVerion.SA ? i : i + 1].boneId, // +1 for VC
+                boneId: rwDff.animNodes[rwDff.versionNumber == RwVersion.SA ? i : i + 1].boneId, // +1 for VC
                 boneIndex: bone.boneIndex + 1,
                 flags: bone.flags,
               },
@@ -302,7 +307,14 @@ export class DffConverter {
         bones.push(bone);
 
         if (frame.parentFrame == 0) {
+          bone.setRotation([
+            defaultSkinRotationQuat[0],
+            defaultSkinRotationQuat[1],
+            defaultSkinRotationQuat[2],
+            defaultSkinRotationQuat[3]
+          ]);
           this._scene.addChild(bone);
+
           continue;
         } else {
           bones[frame.parentFrame].addChild(bone);
@@ -313,12 +325,11 @@ export class DffConverter {
       let inverseBindMatrices: number[] = [];
       const rwInverseBindMatrices = rwDff.geometryList.geometries[0].skin.inverseBoneMatrices;
       for (let ibm of rwInverseBindMatrices) {
-        inverseBindMatrices.push(...[
+        inverseBindMatrices.push(
           ibm.right.x, ibm.right.y, ibm.right.z, ibm.right.t,
           ibm.up.x, ibm.up.y, ibm.up.z, ibm.up.t,
           ibm.at.x, ibm.at.y, ibm.at.z, ibm.at.t,
-          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t,
-          ]
+          ibm.transform.x, ibm.transform.y, ibm.transform.z, ibm.transform.t
         );
       }
 
@@ -342,6 +353,15 @@ export class DffConverter {
 
   private convertCarData(rwDff: RwDff) {
     throw new Error('Method not implemented.');
+  }
+
+  private correctModelRotation() {
+    this._meshNode.setRotation([
+      defaultObjectRotationQuat[0],
+      defaultObjectRotationQuat[1],
+      defaultObjectRotationQuat[2],
+      defaultObjectRotationQuat[3]
+    ]);
   }
   
 }

@@ -1,6 +1,6 @@
 {
   "name": "dff2gltf-converter",
-  "version": "0.9.4",
+  "version": "1.0.0",
   "description": "3D model converter from .dff/.txd to glTF and glb",
   "homepage": "https://github.com/AlterSDB/dff2glb-converter#readme",
   "bugs": {
@@ -25,10 +25,9 @@
   "author": "AlterSDB",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "type": "module",
   "scripts": {
-    "start": "tsc && node ./dist/test.js",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "jest"
   },
   "bin": {
     "dff2gltf": "dist/cli.js"
@@ -42,7 +41,11 @@
     "rw-parser": "^1.5.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.15.17",
-    "@types/yargs": "^17.0.33"
+    "@types/yargs": "^17.0.33",
+    "gltf-validator": "^2.0.0-dev.3.10",
+    "jest": "^30.0.4",
+    "ts-jest": "^29.4.0"
   }
 }
