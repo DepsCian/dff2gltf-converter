@@ -7,12 +7,10 @@ import { ModelType } from '../constants/model-types';
 import { RwVersion } from '../constants/rw-versions';
 import { computeNormals } from '../utils/geometry-utils';
 import { createPNGBufferFromRGBA } from '../utils/image-utils';
-import { quatFromRwMatrix, normalizeMatrix } from '../utils/matrix-utils';
+import { quatFromRwMatrix, normalizeMatrix, defaultObjectRotationQuat, defaultSkinRotationQuat } from '../utils/matrix-utils';
 import { normalizeWeights, normalizeJoints, Bone } from '../utils/skin-utils';
 import { DffConversionResult } from './dff-conversion-result';
 import { DffValidator } from './dff-validator';
-
-
 
 
 export class DffConverter {
@@ -51,6 +49,10 @@ export class DffConverter {
       }
       if (this.modelType == ModelType.CAR) {
         this.convertCarData(rwDff);
+      }
+      if (this.modelType == ModelType.OBJECT) {
+      this.correctModelRotation();
+      console.log("XXXX");
       }
 
       // POST-PROCESSING
@@ -305,7 +307,14 @@ export class DffConverter {
         bones.push(bone);
 
         if (frame.parentFrame == 0) {
+          bone.setRotation([
+            defaultSkinRotationQuat[0],
+            defaultSkinRotationQuat[1],
+            defaultSkinRotationQuat[2],
+            defaultSkinRotationQuat[3]
+          ]);
           this._scene.addChild(bone);
+
           continue;
         } else {
           bones[frame.parentFrame].addChild(bone);
@@ -344,6 +353,15 @@ export class DffConverter {
 
   private convertCarData(rwDff: RwDff) {
     throw new Error('Method not implemented.');
+  }
+
+  private correctModelRotation() {
+    this._meshNode.setRotation([
+      defaultObjectRotationQuat[0],
+      defaultObjectRotationQuat[1],
+      defaultObjectRotationQuat[2],
+      defaultObjectRotationQuat[3]
+    ]);
   }
   
 }
