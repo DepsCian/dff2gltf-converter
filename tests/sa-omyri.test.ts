@@ -44,7 +44,7 @@ describe('gltf skin converting: sa-omyri', () => {
       console.debug = jest.fn();
       const dffBuffer = fs.readFileSync(`./tests/assets/sa-omyri.dff`);
       const txdBuffer = fs.readFileSync(`./tests/assets/sa-omyri.txd`);
-      const dffConverter = new DffConverter(dffBuffer, txdBuffer, ModelType.SKIN);
+      const dffConverter = new DffConverter(dffBuffer, txdBuffer);
       const dffConversionResult = await dffConverter.convertDffToGltf();
       conversionResultBuffer = await dffConversionResult.getBuffer();
 
