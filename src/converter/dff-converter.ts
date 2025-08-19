@@ -281,10 +281,11 @@ export class DffConverter {
           bones.push(undefined);
           continue;
         }
-        const translationVector: vec3 = [
-          frame.coordinatesOffset.x, 
-          frame.coordinatesOffset.y, 
-          frame.coordinatesOffset.z];
+        const translationVector: [number, number, number] = [
+          frame.coordinatesOffset.x,
+          frame.coordinatesOffset.y,
+          frame.coordinatesOffset.z,
+        ];
         const rotationQuat: quat = quatFromRwMatrix(frame.rotationMatrix);
         quat.normalize(rotationQuat, rotationQuat);
 
