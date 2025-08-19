@@ -11,7 +11,7 @@ import { quatFromRwMatrix, normalizeMatrix, defaultObjectRotationQuat, defaultSk
 import { normalizeWeights, normalizeJoints, Bone } from '../utils/skin-utils';
 import { DffConversionResult } from './dff-conversion-result';
 import { DffValidator } from './dff-validator';
-
+import { mapRwModelType } from '../utils/model-type-utils';
 
 export class DffConverter {
   dff: Buffer;
@@ -23,10 +23,9 @@ export class DffConverter {
   private _meshNode: Node;
   private _texturesMap: Map<string, Buffer>;
 
-  constructor(dff: Buffer, txd: Buffer, modelType: ModelType) {
+  constructor(dff: Buffer, txd: Buffer) {
     this.dff = dff;
     this.txd = txd;
-    this.modelType = modelType;
   }
 
   async convertDffToGltf(): Promise<DffConversionResult> {
@@ -38,21 +37,17 @@ export class DffConverter {
       this._texturesMap = await this.convertTextures();
       const dffParser = new DffParser(this.dff);
       const rwDff = await dffParser.parse();
+      this.modelType = mapRwModelType(rwDff.modelType);
 
       DffValidator.validate(this.modelType, rwDff.versionNumber);
 
       for (const rwGeometry of rwDff.geometryList.geometries) {
         this.convertGeometryData(rwGeometry);
       }
-      if (this.modelType == ModelType.SKIN) {
+      if (this.modelType === ModelType.SKIN) {
         this.convertSkinData(rwDff);
-      }
-      if (this.modelType == ModelType.CAR) {
-        this.convertCarData(rwDff);
-      }
-      if (this.modelType == ModelType.OBJECT) {
-      this.correctModelRotation();
-      console.log("XXXX");
+      } else if (this.modelType === ModelType.OBJECT) {
+        this.correctModelRotation();
       }
 
       // POST-PROCESSING
@@ -150,7 +145,7 @@ export class DffConverter {
     const mesh = this._doc.createMesh();
     const { vertices, uvs, normals } = this.extractGeometryData(rwGeometry);
     const { posAccessor, uvsAccessor, normAccessor } = this.createGeometryAccessors(vertices, uvs, normals);
-    const primitiveMode = this.modelType == ModelType.CAR ? Primitive.Mode.TRIANGLE_STRIP : Primitive.Mode.TRIANGLES;
+    const primitiveMode = Primitive.Mode.TRIANGLES;
 
     for (const rwPrimitive of rwGeometry.binMesh.meshes) {
       const indices = new Uint32Array(rwPrimitive.indices);
@@ -165,7 +160,7 @@ export class DffConverter {
         .setAttribute('TEXCOORD_0', uvsAccessor)
         .setAttribute('NORMAL', normAccessor);
 
-      if (this.modelType == ModelType.SKIN) {
+      if (this.modelType === ModelType.SKIN) {
         this.addSkinAttributes(rwGeometry, primitive);
       }
 
@@ -349,10 +344,6 @@ export class DffConverter {
       console.error(`${e} Cannot create skin data.`);
       throw e;
     }
-  }
-
-  private convertCarData(rwDff: RwDff) {
-    throw new Error('Method not implemented.');
   }
 
   private correctModelRotation() {
