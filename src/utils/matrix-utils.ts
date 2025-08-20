@@ -16,7 +16,7 @@ export function normalizeMatrix (matrix :mat4) :mat4 {
   let normalizedMatrix = mat4.fromRotationTranslationScale(mat4.create(), rotation, translation, [1, 1, 1]);
 
     // Remove infinite values
-    normalizedMatrix = mat4.fromValues(...normalizedMatrix.map((v) => isFinite(v) ? v : -1) as [ 
+    normalizedMatrix = mat4.fromValues(...Array.from(normalizedMatrix).map((v: number) => isFinite(v) ? v : -1) as [
       number, number, number, number, 
       number, number, number, number, 
       number, number, number, number, 
