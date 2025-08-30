@@ -20,8 +20,8 @@ export class DffConverter {
 
   private _doc: Document;
   private _scene: Scene;
-  private _meshNode: Node;
   private _texturesMap: Map<string, Buffer>;
+  private _nodes: Map<number, Node>;
 
   constructor(dff: Buffer, txd: Buffer) {
     this.dff = dff;
@@ -33,17 +33,20 @@ export class DffConverter {
       this._doc = new Document();
       this._doc.createBuffer();
       this._scene = this._doc.createScene();
-      this._meshNode = this._doc.createNode('Mesh');
       this._texturesMap = await this.convertTextures();
       const dffParser = new DffParser(this.dff);
       const rwDff = await dffParser.parse();
       this.modelType = mapRwModelType(rwDff.modelType);
-
+      
       DffValidator.validate(this.modelType, rwDff.versionNumber);
 
-      for (const rwGeometry of rwDff.geometryList.geometries) {
-        this.convertGeometryData(rwGeometry);
-      }
+      this._buildSceneGraph(rwDff);
+
+      rwDff.atomics.forEach((frameIndex, geometryIndex) => {
+        const rwGeometry = rwDff.geometryList!.geometries[geometryIndex];
+        this.convertGeometryData(rwGeometry, frameIndex);
+      });
+      
       if (this.modelType === ModelType.SKIN) {
         this.convertSkinData(rwDff);
       } else if (this.modelType === ModelType.OBJECT) {
@@ -141,7 +144,7 @@ export class DffConverter {
     }
   }
 
-  private convertGeometryData(rwGeometry: RwGeometry): void {
+  private convertGeometryData(rwGeometry: RwGeometry, frameIndex: number): void {
     const mesh = this._doc.createMesh();
     const { vertices, uvs, normals } = this.extractGeometryData(rwGeometry);
     const { posAccessor, uvsAccessor, normAccessor } = this.createGeometryAccessors(vertices, uvs, normals);
@@ -166,9 +169,15 @@ export class DffConverter {
 
       mesh.addPrimitive(primitive);
     }
-
-    this._meshNode.setMesh(mesh);
-    this._scene.addChild(this._meshNode);
+    
+    const node = this._nodes.get(frameIndex);
+    if(node) {
+      node.setMesh(mesh);
+      if (this.modelType === ModelType.SKIN) {
+        const skin = this._doc.getRoot().listSkins()[0];
+        if (skin) node.setSkin(skin);
+      }
+    }
   }
 
   private createMaterial(rwGeometry: RwGeometry, rwPrimitive: RwMesh): Material {
@@ -218,7 +227,6 @@ export class DffConverter {
   private convertSkinData(rwDff: RwDff): void {
     try {
       const skin = this._doc.createSkin('Skin');
-      this._meshNode.setSkin(skin);
       const rwFrames = rwDff.frameList.frames;
       const bones: Node[] = [];
 
@@ -348,12 +356,45 @@ export class DffConverter {
   }
 
   private correctModelRotation() {
-    this._meshNode.setRotation([
+    const rootNode = this._doc.createNode('DFF_CORRECTION_NODE');
+    this._scene.listChildren().forEach((child) => {
+        rootNode.addChild(child);
+    });
+    rootNode.setRotation([
       defaultObjectRotationQuat[0],
       defaultObjectRotationQuat[1],
       defaultObjectRotationQuat[2],
       defaultObjectRotationQuat[3]
     ]);
+    this._scene.addChild(rootNode);
+  }
+
+  private _buildSceneGraph(rwDff: RwDff): void {
+    this._nodes = new Map();
+    const rwFrames = rwDff.frameList.frames;
+
+    for(let i = 0; i < rwFrames.length; i++) {
+      const frame = rwFrames[i];
+      const translation: vec3 = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
+      const rotation: quat = quatFromRwMatrix(frame.rotationMatrix);
+      quat.normalize(rotation, rotation);
+      
+      const node = this._doc.createNode(rwDff.dummies[i] ?? `frame_${i}`)
+        .setTranslation([translation[0], translation[1], translation[2]])
+        .setRotation([rotation[0], rotation[1], rotation[2], rotation[3]])
+        .setScale([1, 1, 1]);
+      
+      this._nodes.set(i, node);
+
+      if (frame.parentFrame > -1) {
+        const parentNode = this._nodes.get(frame.parentFrame);
+        if (parentNode) {
+          parentNode.addChild(node);
+        }
+      } else {
+        this._scene.addChild(node);
+      }
+    }
   }
   
 }

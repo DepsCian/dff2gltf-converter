@@ -6,8 +6,8 @@ export declare class DffConverter {
     modelType: ModelType;
     private _doc;
     private _scene;
-    private _meshNode;
     private _texturesMap;
+    private _nodes;
     constructor(dff: Buffer, txd: Buffer);
     convertDffToGltf(): Promise<DffConversionResult>;
     private extractGeometryData;
@@ -18,4 +18,5 @@ export declare class DffConverter {
     private addSkinAttributes;
     private convertSkinData;
     private correctModelRotation;
+    private _buildSceneGraph;
 }

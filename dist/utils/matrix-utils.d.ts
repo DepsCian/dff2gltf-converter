@@ -1,5 +1,5 @@
 import { mat4, quat, vec4 } from "gl-matrix";
-import { RwMatrix3 } from "rw-parser";
+import { RwMatrix3 } from "rw-parser-ng";
 export declare const defaultObjectRotationQuat: vec4;
 export declare const defaultSkinRotationQuat: vec4;
 export declare function normalizeMatrix(matrix: mat4): mat4;

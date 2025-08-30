@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DffConverter = void 0;
 const core_1 = require("@gltf-transform/core");
 const functions_1 = require("@gltf-transform/functions");
-const rw_parser_1 = require("rw-parser");
+const rw_parser_ng_1 = require("rw-parser-ng");
 const gl_matrix_1 = require("gl-matrix");
 const model_types_1 = require("../constants/model-types");
 const rw_versions_1 = require("../constants/rw-versions");
@@ -24,15 +24,16 @@ class DffConverter {
             this._doc = new core_1.Document();
             this._doc.createBuffer();
             this._scene = this._doc.createScene();
-            this._meshNode = this._doc.createNode('Mesh');
             this._texturesMap = await this.convertTextures();
-            const dffParser = new rw_parser_1.DffParser(this.dff);
+            const dffParser = new rw_parser_ng_1.DffParser(this.dff);
             const rwDff = await dffParser.parse();
             this.modelType = (0, model_type_utils_1.mapRwModelType)(rwDff.modelType);
             dff_validator_1.DffValidator.validate(this.modelType, rwDff.versionNumber);
-            for (const rwGeometry of rwDff.geometryList.geometries) {
-                this.convertGeometryData(rwGeometry);
-            }
+            this._buildSceneGraph(rwDff);
+            rwDff.atomics.forEach((frameIndex, geometryIndex) => {
+                const rwGeometry = rwDff.geometryList.geometries[geometryIndex];
+                this.convertGeometryData(rwGeometry, frameIndex);
+            });
             if (this.modelType === model_types_1.ModelType.SKIN) {
                 this.convertSkinData(rwDff);
             }
@@ -95,7 +96,7 @@ class DffConverter {
     async convertTextures() {
         try {
             const texturesMap = new Map();
-            const rwTxd = new rw_parser_1.TxdParser(this.txd).parse();
+            const rwTxd = new rw_parser_ng_1.TxdParser(this.txd).parse();
             if (rwTxd.textureDictionary.textureCount < 1) {
                 throw new Error('Textures not found.');
             }
@@ -113,7 +114,7 @@ class DffConverter {
             throw e;
         }
     }
-    convertGeometryData(rwGeometry) {
+    convertGeometryData(rwGeometry, frameIndex) {
         const mesh = this._doc.createMesh();
         const { vertices, uvs, normals } = this.extractGeometryData(rwGeometry);
         const { posAccessor, uvsAccessor, normAccessor } = this.createGeometryAccessors(vertices, uvs, normals);
@@ -134,8 +135,15 @@ class DffConverter {
             }
             mesh.addPrimitive(primitive);
         }
-        this._meshNode.setMesh(mesh);
-        this._scene.addChild(this._meshNode);
+        const node = this._nodes.get(frameIndex);
+        if (node) {
+            node.setMesh(mesh);
+            if (this.modelType === model_types_1.ModelType.SKIN) {
+                const skin = this._doc.getRoot().listSkins()[0];
+                if (skin)
+                    node.setSkin(skin);
+            }
+        }
     }
     createMaterial(rwGeometry, rwPrimitive) {
         const materialIndex = rwPrimitive.materialIndex;
@@ -180,7 +188,6 @@ class DffConverter {
     convertSkinData(rwDff) {
         try {
             const skin = this._doc.createSkin('Skin');
-            this._meshNode.setSkin(skin);
             const rwFrames = rwDff.frameList.frames;
             const bones = [];
             let bonesTable = [];
@@ -291,12 +298,41 @@ class DffConverter {
         }
     }
     correctModelRotation() {
-        this._meshNode.setRotation([
+        const rootNode = this._doc.createNode('DFF_CORRECTION_NODE');
+        this._scene.listChildren().forEach((child) => {
+            rootNode.addChild(child);
+        });
+        rootNode.setRotation([
             matrix_utils_1.defaultObjectRotationQuat[0],
             matrix_utils_1.defaultObjectRotationQuat[1],
             matrix_utils_1.defaultObjectRotationQuat[2],
             matrix_utils_1.defaultObjectRotationQuat[3]
         ]);
+        this._scene.addChild(rootNode);
+    }
+    _buildSceneGraph(rwDff) {
+        this._nodes = new Map();
+        const rwFrames = rwDff.frameList.frames;
+        for (let i = 0; i < rwFrames.length; i++) {
+            const frame = rwFrames[i];
+            const translation = [frame.coordinatesOffset.x, frame.coordinatesOffset.y, frame.coordinatesOffset.z];
+            const rotation = (0, matrix_utils_1.quatFromRwMatrix)(frame.rotationMatrix);
+            gl_matrix_1.quat.normalize(rotation, rotation);
+            const node = this._doc.createNode(rwDff.dummies[i] ?? `frame_${i}`)
+                .setTranslation([translation[0], translation[1], translation[2]])
+                .setRotation([rotation[0], rotation[1], rotation[2], rotation[3]])
+                .setScale([1, 1, 1]);
+            this._nodes.set(i, node);
+            if (frame.parentFrame > -1) {
+                const parentNode = this._nodes.get(frame.parentFrame);
+                if (parentNode) {
+                    parentNode.addChild(node);
+                }
+            }
+            else {
+                this._scene.addChild(node);
+            }
+        }
     }
 }
 exports.DffConverter = DffConverter;
