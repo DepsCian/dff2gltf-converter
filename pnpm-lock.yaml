@@ -25,7 +25,7 @@ importers:
         version: 7.0.0
       rw-parser-ng:
         specifier: github:DepsCian/rw-parser-ng
-        version: https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/75a5d11049f2f070f12f7ca5d577944c1be3042e
+        version: https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/d27629e6d0058a47ec8576f7ae31061bac0936e6
     devDependencies:
       '@types/jest':
         specifier: ^30.0.0
@@ -1337,9 +1337,9 @@ packages:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
     engines: {node: '>=8'}
 
-  rw-parser-ng@https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/75a5d11049f2f070f12f7ca5d577944c1be3042e:
-    resolution: {tarball: https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/75a5d11049f2f070f12f7ca5d577944c1be3042e}
-    version: 2.0.0
+  rw-parser-ng@https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/d27629e6d0058a47ec8576f7ae31061bac0936e6:
+    resolution: {tarball: https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/d27629e6d0058a47ec8576f7ae31061bac0936e6}
+    version: 2.0.5
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -3085,7 +3085,7 @@ snapshots:
 
   resolve-from@5.0.0: {}
 
-  rw-parser-ng@https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/75a5d11049f2f070f12f7ca5d577944c1be3042e: {}
+  rw-parser-ng@https://codeload.github.com/DepsCian/rw-parser-ng/tar.gz/d27629e6d0058a47ec8576f7ae31061bac0936e6: {}
 
   semver@6.3.1: {}
 

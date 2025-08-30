@@ -1,4 +1,4 @@
-import { RwBone, RwFrame } from 'rw-parser';
+import { RwBone, RwFrame } from 'rw-parser-ng';
 
 export interface Bone {
   name: string;

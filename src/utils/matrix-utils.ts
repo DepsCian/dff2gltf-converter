@@ -1,5 +1,5 @@
 import { mat4, quat, vec3, vec4 } from "gl-matrix";
-import { RwMatrix3 } from "rw-parser";
+import { RwMatrix3 } from "rw-parser-ng";
 
 export const defaultObjectRotationQuat :vec4 = vec4.fromValues(-0.7071068, 0,  0, 0.7071068);   // -90deg(x)
 export const defaultSkinRotationQuat :vec4 = vec4.fromValues(0.5, 0.5, 0.5, -0.5);   // -90deg(x) + -90deg(z)

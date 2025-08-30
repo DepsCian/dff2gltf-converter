@@ -1,6 +1,6 @@
 import { Document, Primitive, Node, Scene, PropertyType, Material, Accessor } from '@gltf-transform/core';
 import { dedup, textureCompress, weld } from '@gltf-transform/functions';
-import { DffParser, RwBinMesh, RwDff, RwGeometry, RwMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser';
+import { DffParser, RwBinMesh, RwDff, RwGeometry, RwMesh, RwTextureCoordinate, RwTxd, RwVector3, TxdParser } from 'rw-parser-ng';
 import { mat4, quat, vec3 } from 'gl-matrix';
 
 import { ModelType } from '../constants/model-types';

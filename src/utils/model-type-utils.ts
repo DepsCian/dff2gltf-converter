@@ -1,4 +1,4 @@
-import { DffModelType } from 'rw-parser';
+import { DffModelType } from 'rw-parser-ng';
 import { ModelType } from '../constants/model-types';
 
 export function mapRwModelType(rwModelType: DffModelType): ModelType {
