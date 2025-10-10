@@ -35,7 +35,7 @@
     "@types/pngjs": "^6.0.5",
     "gl-matrix": "^3.4.3",
     "pngjs": "^7.0.0",
-    "rw-parser-ng": "rw-parser-ng"
+    "rw-parser-ng": "^2.0.5"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -4,3 +4,4 @@ output/
 src/test.ts
 tests/convert.test.ts
 scripts
+Rust/
