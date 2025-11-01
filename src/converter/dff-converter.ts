@@ -36,6 +36,7 @@ export class DffConverter {
       this._texturesMap = await this.convertTextures();
       const dffParser = new DffParser(this.dff);
       const rwDff = await dffParser.parse();
+      dffParser.dispose();
       this.modelType = mapRwModelType(rwDff.modelType);
       
       DffValidator.validate(this.modelType, rwDff.versionNumber);
@@ -58,11 +59,25 @@ export class DffConverter {
       await this._doc.transform(weld());
       await this._doc.transform(textureCompress({ targetFormat: 'png', resize: [1024, 1024] }));
 
-      return new DffConversionResult(this._doc);
+      const result = new DffConversionResult(this._doc);
+      this.dispose();
+      return result;
     } catch (e) {
       console.error(`${e}. DFF conversion aborted.`);
+      this.dispose();
       throw e;
     }
+  }
+
+  dispose(): void {
+    this.dff = null;
+    this.txd = null;
+    this._doc = null;
+    this._scene = null;
+    this._texturesMap?.clear();
+    this._texturesMap = null;
+    this._nodes?.clear();
+    this._nodes = null;
   }
 
   private extractGeometryData(rwGeometry: RwGeometry): { vertices: Float32Array; uvs: Float32Array; normals: Float32Array } {
@@ -122,7 +137,9 @@ export class DffConverter {
   private async convertTextures(): Promise<Map<string, Buffer>> {
     try {
       const texturesMap = new Map();
-      const rwTxd: RwTxd = new TxdParser(this.txd).parse();
+      const txdParser = new TxdParser(this.txd);
+      const rwTxd: RwTxd = txdParser.parse();
+      txdParser.dispose();
 
       if (rwTxd.textureDictionary.textureCount < 1) {
         throw new Error('Textures not found.');
