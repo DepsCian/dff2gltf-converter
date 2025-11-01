@@ -27,6 +27,7 @@ class DffConverter {
             this._texturesMap = await this.convertTextures();
             const dffParser = new rw_parser_ng_1.DffParser(this.dff);
             const rwDff = await dffParser.parse();
+            dffParser.dispose();
             this.modelType = (0, model_type_utils_1.mapRwModelType)(rwDff.modelType);
             dff_validator_1.DffValidator.validate(this.modelType, rwDff.versionNumber);
             this._buildSceneGraph(rwDff);
@@ -43,12 +44,25 @@ class DffConverter {
             await this._doc.transform((0, functions_1.dedup)({ propertyTypes: [core_1.PropertyType.ACCESSOR, core_1.PropertyType.MESH, core_1.PropertyType.TEXTURE, core_1.PropertyType.MATERIAL] }));
             await this._doc.transform((0, functions_1.weld)());
             await this._doc.transform((0, functions_1.textureCompress)({ targetFormat: 'png', resize: [1024, 1024] }));
-            return new dff_conversion_result_1.DffConversionResult(this._doc);
+            const result = new dff_conversion_result_1.DffConversionResult(this._doc);
+            this.dispose();
+            return result;
         }
         catch (e) {
             console.error(`${e}. DFF conversion aborted.`);
+            this.dispose();
             throw e;
         }
+    }
+    dispose() {
+        this.dff = null;
+        this.txd = null;
+        this._doc = null;
+        this._scene = null;
+        this._texturesMap?.clear();
+        this._texturesMap = null;
+        this._nodes?.clear();
+        this._nodes = null;
     }
     extractGeometryData(rwGeometry) {
         const rwTextureInfo = rwGeometry.textureMappingInformation;
@@ -96,7 +110,9 @@ class DffConverter {
     async convertTextures() {
         try {
             const texturesMap = new Map();
-            const rwTxd = new rw_parser_ng_1.TxdParser(this.txd).parse();
+            const txdParser = new rw_parser_ng_1.TxdParser(this.txd);
+            const rwTxd = txdParser.parse();
+            txdParser.dispose();
             if (rwTxd.textureDictionary.textureCount < 1) {
                 throw new Error('Textures not found.');
             }

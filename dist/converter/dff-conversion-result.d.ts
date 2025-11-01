@@ -4,4 +4,5 @@ export declare class DffConversionResult {
     constructor(gltfBuffer: Document);
     exportAs(exportPath: string): void;
     getBuffer(): Promise<Buffer>;
+    dispose(): void;
 }

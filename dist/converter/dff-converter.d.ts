@@ -10,6 +10,7 @@ export declare class DffConverter {
     private _nodes;
     constructor(dff: Buffer, txd: Buffer);
     convertDffToGltf(): Promise<DffConversionResult>;
+    dispose(): void;
     private extractGeometryData;
     private createGeometryAccessors;
     private convertTextures;

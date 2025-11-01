@@ -14,7 +14,12 @@ class DffConversionResult {
     }
     async getBuffer() {
         const byteBuffer = await new core_1.NodeIO().writeBinary(this.gltfBuffer);
-        return Buffer.from(byteBuffer);
+        const buffer = Buffer.from(byteBuffer);
+        this.dispose();
+        return buffer;
+    }
+    dispose() {
+        this.gltfBuffer = null;
     }
 }
 exports.DffConversionResult = DffConversionResult;
