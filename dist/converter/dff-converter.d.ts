@@ -8,6 +8,7 @@ export declare class DffConverter {
     private _scene;
     private _texturesMap;
     private _nodes;
+    private _meshNode;
     constructor(dff: Buffer, txd: Buffer);
     convertDffToGltf(): Promise<DffConversionResult>;
     dispose(): void;

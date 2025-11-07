@@ -30,16 +30,22 @@ class DffConverter {
             dffParser.dispose();
             this.modelType = (0, model_type_utils_1.mapRwModelType)(rwDff.modelType);
             dff_validator_1.DffValidator.validate(this.modelType, rwDff.versionNumber);
-            this._buildSceneGraph(rwDff);
-            rwDff.atomics.forEach((frameIndex, geometryIndex) => {
-                const rwGeometry = rwDff.geometryList.geometries[geometryIndex];
-                this.convertGeometryData(rwGeometry, frameIndex);
-            });
             if (this.modelType === model_types_1.ModelType.SKIN) {
+                this._meshNode = this._doc.createNode('Mesh');
+                for (const rwGeometry of rwDff.geometryList.geometries) {
+                    this.convertGeometryData(rwGeometry, 0);
+                }
                 this.convertSkinData(rwDff);
             }
-            else if (this.modelType === model_types_1.ModelType.OBJECT) {
-                this.correctModelRotation();
+            else {
+                this._buildSceneGraph(rwDff);
+                rwDff.atomics.forEach((frameIndex, geometryIndex) => {
+                    const rwGeometry = rwDff.geometryList.geometries[geometryIndex];
+                    this.convertGeometryData(rwGeometry, frameIndex);
+                });
+                if (this.modelType === model_types_1.ModelType.OBJECT) {
+                    this.correctModelRotation();
+                }
             }
             await this._doc.transform((0, functions_1.dedup)({ propertyTypes: [core_1.PropertyType.ACCESSOR, core_1.PropertyType.MESH, core_1.PropertyType.TEXTURE, core_1.PropertyType.MATERIAL] }));
             await this._doc.transform((0, functions_1.weld)());
@@ -63,6 +69,7 @@ class DffConverter {
         this._texturesMap = null;
         this._nodes?.clear();
         this._nodes = null;
+        this._meshNode = null;
     }
     extractGeometryData(rwGeometry) {
         const rwTextureInfo = rwGeometry.textureMappingInformation;
@@ -151,13 +158,14 @@ class DffConverter {
             }
             mesh.addPrimitive(primitive);
         }
-        const node = this._nodes.get(frameIndex);
-        if (node) {
-            node.setMesh(mesh);
-            if (this.modelType === model_types_1.ModelType.SKIN) {
-                const skin = this._doc.getRoot().listSkins()[0];
-                if (skin)
-                    node.setSkin(skin);
+        if (this.modelType === model_types_1.ModelType.SKIN) {
+            this._meshNode.setMesh(mesh);
+            this._scene.addChild(this._meshNode);
+        }
+        else {
+            const node = this._nodes.get(frameIndex);
+            if (node) {
+                node.setMesh(mesh);
             }
         }
     }
@@ -204,6 +212,7 @@ class DffConverter {
     convertSkinData(rwDff) {
         try {
             const skin = this._doc.createSkin('Skin');
+            this._meshNode.setSkin(skin);
             const rwFrames = rwDff.frameList.frames;
             const bones = [];
             let bonesTable = [];
@@ -261,7 +270,7 @@ class DffConverter {
                 const translationVector = [
                     frame.coordinatesOffset.x,
                     frame.coordinatesOffset.y,
-                    frame.coordinatesOffset.z,
+                    frame.coordinatesOffset.z
                 ];
                 const rotationQuat = (0, matrix_utils_1.quatFromRwMatrix)(frame.rotationMatrix);
                 gl_matrix_1.quat.normalize(rotationQuat, rotationQuat);
